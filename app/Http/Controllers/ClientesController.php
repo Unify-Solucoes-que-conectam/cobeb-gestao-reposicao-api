@@ -44,4 +44,42 @@ class ClientesController extends Controller
             ], 500);
         }
     }
+
+    // listar um cliente específico
+    public function show(Request $request, $id)
+    {
+        // consultar dados do cliente
+        $query = Cliente::query()->where('id', $id);
+
+        // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
+        if ($request->filled('detalhar')) {
+            $query->with([
+                'notasFiscais.produtos',
+                'notasFiscais.produtos.produto',
+            ]);
+        }
+
+        try {
+
+            $clientes = ClienteResource::collection($query->get());
+
+            if ($clientes->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cliente não encontrado.'
+                ], 404);
+            } else {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Consulta de cliente realizada com sucesso.',
+                    'data' => $clientes->first()
+                ]);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao consultar cliente.'
+            ], 500);
+        }
+    }
 }
