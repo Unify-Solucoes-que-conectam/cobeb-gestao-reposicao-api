@@ -45,16 +45,16 @@ class NotasFiscaisController extends Controller
     }
 
     // listar uma nota fiscal específica
-    public function show(Request $request, $id)
+    public function show(Request $request, $numero)
     {
         // consultar dados da nota fiscal
-        $query = NotaFiscal::query()->where('id', $id);
+        $query = NotaFiscal::query()->where('numero', $numero);
 
         // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
         if ($request->filled('detalhar') && $request->boolean('detalhar') === true) {
             $query->with([
-                'notasFiscais.produtos',
-                'notasFiscais.produtos.produto',
+                'produtos',
+                'cliente',
             ]);
         }
 
@@ -65,13 +65,14 @@ class NotasFiscaisController extends Controller
             if (!$notaFiscal) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Nota fiscal não encontrada.'
+                    'message' => 'Nota fiscal não encontrada.',
+                    'data' => []
                 ], 404);
             } else {
                 return response()->json([
                     'success' => true,
                     'message' => 'Consulta de nota fiscal realizada com sucesso.',
-                    'data' => $notaFiscal
+                    'data' => [$notaFiscal]
                 ]);
             }
         } catch (\Exception $e) {
