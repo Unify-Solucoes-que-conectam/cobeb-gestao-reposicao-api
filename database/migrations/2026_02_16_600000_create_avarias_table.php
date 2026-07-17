@@ -12,7 +12,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
             $table->foreignUuid('mapa_id')->nullable()->constrained('mapas')->nullOnDelete();
-            $table->enum('status', ['pendente', 'em_analise', 'concluido'])->default('pendente');
+            $table->enum('status', ['pendente', 'reprovado', 'aprovado'])->default('pendente');
             $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
             $table->timestamps();
         });
