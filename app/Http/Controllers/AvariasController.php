@@ -116,6 +116,7 @@ class AvariasController extends Controller
             $avaria->load(['notasFiscais', 'produtos', 'anexos']);
 
             return response()->json([
+                'success' => true,
                 'message' => 'Avaria registrada com sucesso.',
                 'data' => $avaria
             ], 201);
@@ -123,6 +124,7 @@ class AvariasController extends Controller
             Log::error('Erro ao registrar avaria: ' . $e->getMessage());
 
             return response()->json([
+                'success' => false,
                 'message' => 'Ocorreu um erro ao processar o registro da avaria.',
                 'error' => $e->getMessage()
             ], 500);
