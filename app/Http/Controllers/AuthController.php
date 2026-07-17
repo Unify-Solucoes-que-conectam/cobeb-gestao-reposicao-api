@@ -23,13 +23,36 @@ class AuthController extends Controller
      */
     private function userDataArray(Usuario $user): array
     {
-        return [
+        // 1. Monta os dados base
+        $userData = [
             'id' => $user->id,
             'nome' => $user->nome,
             'cpf' => $user->cpf,
             'role' => $user->role,
             'primeiro_acesso' => $user->primeiro_acesso,
         ];
+
+        // 2. Adiciona a lógica do mapa caso seja motorista
+        if ($user->role === 'motorista') {
+
+            // Busca o perfil de motorista usando o CPF do usuário
+            $motorista = \App\Models\Motorista::where('cpf', $user->cpf)->first();
+
+            if ($motorista) {
+                // Se achou o motorista, busca o mapa ativo
+                $mapaAtivo = \App\Models\Mapa::with('motorista')
+                    ->where('motorista_id', $motorista->id)
+                    ->where('status', 'ativo')
+                    ->first();
+
+                $userData['mapa'] = $mapaAtivo;
+            } else {
+                $userData['mapa'] = null;
+            }
+        }
+
+        // 3. Retorna o array completo
+        return $userData;
     }
 
     /**
