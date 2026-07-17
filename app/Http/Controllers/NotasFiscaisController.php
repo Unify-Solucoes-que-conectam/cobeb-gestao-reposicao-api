@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\NotaFiscalResource;
+use App\Models\NotaFiscal;
 use Illuminate\Http\Request;
 
 class NotasFiscaisController extends Controller
@@ -10,73 +12,73 @@ class NotasFiscaisController extends Controller
     public function index(Request $request)
     {
 
-        // consultar dados dos clientes e filtrar por nome ou cpf se os parâmetros forem fornecidos
-        $query = Cliente::query();
+        // consultar dados das notas fiscais e filtrar por número fornecido no parâmetro 'search' da requisição
+        $query = NotaFiscal::query();
 
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->where(function ($query) use ($search) {
-                $query->where('codigo', 'like', '%' . $search . '%')
-                    ->orWhere('nome_fantasia', 'like', '%' . $search . '%');
+            $query->where(function ($q) use ($search) {
+                $q->where('numero', 'like', '%' . $search . '%');
             });
         }
 
         // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
-        if ($request->filled('detalhar')) {
+        if ($request->boolean('detalhar')) {
             $query->with([
-                'notasFiscais.produtos',
-                'notasFiscais.produtos.produto',
+                'produtos',
+                'cliente',
             ]);
         }
 
         try {
             return response()->json([
                 'success' => true,
-                'message' => 'Consulta de clientes realizada com sucesso.',
-                'data' => ClienteResource::collection($query->get())
+                'message' => 'Consulta de notas fiscais realizada com sucesso.',
+                'data' => NotaFiscalResource::collection($query->get())
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao consultar clientes.'
+                'message' => 'Erro ao consultar notas fiscais.'
             ], 500);
         }
     }
 
-    // listar um cliente específico
-    public function show(Request $request, $id)
+    // listar uma nota fiscal específica
+    public function show(Request $request, $numero)
     {
-        // consultar dados do cliente
-        $query = Cliente::query()->where('id', $id);
+        // consultar dados da nota fiscal
+        $query = NotaFiscal::query()->where('numero', $numero);
 
         // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
-        if ($request->filled('detalhar')) {
+        if ($request->filled('detalhar') && $request->boolean('detalhar') === true) {
             $query->with([
-                'notasFiscais.produtos',
-                'notasFiscais.produtos.produto',
+                'produtos',
+                'cliente',
             ]);
         }
 
         try {
 
-            $clientes = ClienteResource::collection($query->get());
+            $notaFiscal = NotaFiscalResource::collection($query->get())->first();
 
-            if ($clientes->isEmpty()) {
+            if (!$notaFiscal) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cliente não encontrado.'
+                    'message' => 'Nota fiscal não encontrada.',
+                    'data' => []
                 ], 404);
             } else {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Consulta de cliente realizada com sucesso.',
-                    'data' => $clientes->first()
+                    'message' => 'Consulta de nota fiscal realizada com sucesso.',
+                    'data' => [$notaFiscal]
                 ]);
             }
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao consultar cliente.'
+                'message' => 'Erro ao consultar nota fiscal.'
             ], 500);
         }
     }

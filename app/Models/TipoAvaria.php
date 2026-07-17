@@ -18,6 +18,7 @@ class TipoAvaria extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
+        'nome',
         'descricao',
         'usuario_responsavel_id',
     ];
