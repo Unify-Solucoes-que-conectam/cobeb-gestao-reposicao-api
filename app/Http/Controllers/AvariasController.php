@@ -71,7 +71,6 @@ class AvariasController extends Controller
                 $avaria = Avaria::create([
                     'cliente_id' => $request->cliente_id,
                     'mapa_id' => $request->mapa_id,
-                    'status' => $request->status,
                     'usuario_responsavel_id' => $usuarioId,
                 ]);
 
