@@ -44,7 +44,7 @@ class NotaFiscalResource extends JsonResource
                     $item->valor_total = $produtoOriginal ? $produtoOriginal->valor_unitario * $item->quantidade : null;
 
                     return [
-                        'id' => $item->id,
+                        'id' => $item->produto_id,
                         'codigo' => $produtoOriginal ? $produtoOriginal->codigo : null,
                         'descricao' => $produtoOriginal ? $produtoOriginal->descricao : null,
                         'quantidade' => $item->quantidade,
