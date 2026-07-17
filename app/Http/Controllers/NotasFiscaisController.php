@@ -54,6 +54,7 @@ class NotasFiscaisController extends Controller
         if ($request->filled('detalhar') && $request->boolean('detalhar') === true) {
             $query->with([
                 'produtos',
+                'produtos.produto',
                 'cliente',
             ]);
         }

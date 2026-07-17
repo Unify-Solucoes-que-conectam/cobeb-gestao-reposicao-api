@@ -19,10 +19,8 @@ class Avaria extends Model
 
     protected $fillable = [
         'cliente_id',
-        'motorista_id',
         'mapa_id',
         'status',
-        'data_registro',
         'usuario_responsavel_id',
     ];
 
