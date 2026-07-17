@@ -156,17 +156,43 @@ class AuthController extends Controller
     /**
      * Retorna os dados do usuário logado (Check Me)
      */
-    public function me(Request $request): JsonResponse
+    /**
+     * Retorna os dados do usuário logado (Check Me)
+     */
+    public function me(Request $request): \Illuminate\Http\JsonResponse
     {
         try {
             $user = $request->user();
-            $menus = Menu::buildMenuTree(Menu::query()->get()->toArray());
+            $menus = \App\Models\Menu::buildMenuTree(\App\Models\Menu::query()->get()->toArray());
+
+            // Pega os dados formatados do usuário gerados pelo seu método
+            $userData = $this->userDataArray($user);
+
+            // Verifica se a role do usuário é motorista
+            if ($user->role === 'motorista') {
+
+                // 1. Busca o perfil de motorista usando o CPF do usuário logado
+                $motorista = \App\Models\Motorista::where('cpf', $user->cpf)->first();
+
+                if ($motorista) {
+                    // 2. Se achou o motorista, busca o mapa ativo atrelado ao ID dele
+                    $mapaAtivo = \App\Models\Mapa::with('motorista')
+                        ->where('motorista_id', $motorista->id)
+                        ->where('status', 'ativo')
+                        ->first();
+
+                    $userData['mapa'] = $mapaAtivo;
+                } else {
+                    // Se por acaso não achar o motorista associado ao CPF, retorna nulo
+                    $userData['mapa'] = null;
+                }
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Dados do usuário autenticado',
                 'data' => [
-                    'usuario' => $this->userDataArray($user),
+                    'usuario' => $userData,
                     'menus' => $menus,
                 ]
             ]);
