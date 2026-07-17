@@ -11,6 +11,7 @@ class StoreAvariaRequest extends FormRequest
     {
         return [
             'cliente_id' => 'required|uuid|exists:clientes,id',
+            'mapa_id' => 'nullable|uuid',
             'status' => 'required|string|in:pendente, em_analise, concluido',
 
             // Validação das Notas Fiscais relacionadas
