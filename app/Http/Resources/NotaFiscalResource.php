@@ -30,6 +30,9 @@ class NotaFiscalResource extends JsonResource
             'usuario_responsavel_id' => $this->usuario_responsavel_id,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+
+            'produtos' => $this->whenLoaded('produtos'),
+            'cliente' => $this->whenLoaded('cliente'),
         ];
     }
 }
