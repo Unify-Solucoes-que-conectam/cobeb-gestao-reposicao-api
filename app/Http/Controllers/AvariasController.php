@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Support\WhatsAppService;
 
 class AvariasController extends Controller
 {
@@ -151,7 +152,7 @@ class AvariasController extends Controller
 
         try {
             // 2. Busca a avaria pelo ID
-            $avaria = Avaria::findOrFail($id); //[cite: 1]
+            $avaria = Avaria::findOrFail($id);
 
             // 3. Regra de negócio: só pode alterar se estiver 'pendente'
             if (strtolower($avaria->status) !== 'pendente') {
@@ -163,11 +164,23 @@ class AvariasController extends Controller
 
             // 4. Atualiza o status e salva
             $avaria->status = $request->status;
-            $avaria->save(); //[cite: 1]
+            $avaria->save(); //
+
+            // Enviar via WhatsApp
+            $whatsapp = new WhatsAppService();
+            $sent = $whatsapp->sendMessage('37998247669', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso. Agradecemos pela sua paciência e compreensão.");
+
+            if (!$sent) {
+                Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
+                return response()->json([
+                    'success' => false,
+                    'message' => "Avaria {$request->status} com sucesso, mas falha ao enviar notificação via WhatsApp."
+                ], 500);
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => "Avaria {$request->status} com sucesso.",
+                'message' => "Avaria {$request->status} com sucesso, o cliente foi notificado via WhatsApp.",
                 'data' => $avaria
             ]);
         } catch (ModelNotFoundException $e) {
