@@ -47,6 +47,11 @@ class AvariasController extends Controller
                 'anexos'
             ])->get();
 
+            // filtra avarias pelo clienteId
+            if ($request->has('clienteId')) {
+                $avarias = $avarias->where('cliente_id', $request->clienteId);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Avarias carregadas com sucesso.',
