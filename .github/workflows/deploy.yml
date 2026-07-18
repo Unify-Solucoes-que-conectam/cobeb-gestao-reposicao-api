@@ -1,35 +1,21 @@
-name: Build and Deploy
+name: Deploy para Coolify
+
 on:
-    push:
-        branches:
-            - develop
+  push:
+    branches: [main, develop]
 
 jobs:
-    build:
-        name: Build and Deploy
-        runs-on: ubuntu-latest
-        steps:
-            -   name: Checkout Repository
-                uses: actions/checkout@master
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚀 Deploy Produção via Coolify
+        if: github.ref == 'refs/heads/main'
+        run: |
+          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_PROD }}' \
+          --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
 
-            -   name: Setup Enviroment
-                uses: shivammathur/setup-php@v2
-                with:
-                    php-version: '8.3.6'
-
-            -   name: Install Packages
-                run: composer install --no-dev
-
-            -   name: Deploy to Server
-                uses: charliex2/laravel-action@master
-                with:
-                    user: ${{ secrets.SSH_USER }}
-                    host: ${{ secrets.SSH_HOST }}
-                    path: ${{ secrets.DEPLOY_PATH_HOMOLOGACAO }}
-                    owner: $${{ secrets.SSH_USER }}
-                    commands: |
-                        php artisan migrate --seed --force
-                        php artisan queue:restart
-                        php artisan reverb:restart
-                env:
-                    DEPLOY_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: 🧪 Deploy Homologação via Coolify
+        if: github.ref == 'refs/heads/develop'
+        run: |
+          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_STAGING }}' \
+          --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
