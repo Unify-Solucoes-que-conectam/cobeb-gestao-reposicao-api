@@ -2,12 +2,20 @@ name: Deploy para Coolify
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: 🚀 Deploy via Coolify
+      - name: 🚀 Deploy Produção via Coolify
+        if: github.ref == 'refs/heads/main'
         run: |
-          curl --request GET '${{ secrets.COOLIFY_WEBHOOK }}' --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
+          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_PROD }}' \
+          --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
+
+      - name: 🧪 Deploy Homologação via Coolify
+        if: github.ref == 'refs/heads/develop'
+        run: |
+          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_STAGING }}' \
+          --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
