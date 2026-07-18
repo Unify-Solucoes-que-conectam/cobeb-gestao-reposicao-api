@@ -68,4 +68,13 @@ class UserNotification extends Notification implements DatabaseNotifiable, Shoul
     {
         return [new PrivateChannel('notifications.' . $this->data['usuario_id'])];
     }
+
+    /**
+     * Opcional: Define o nome do evento para o frontend ouvir.
+     * Padrão: Illuminate\Notifications\Events\BroadcastNotificationCreated
+     */
+    public function broadcastType(): string
+    {
+        return 'notification.created';
+    }
 }
