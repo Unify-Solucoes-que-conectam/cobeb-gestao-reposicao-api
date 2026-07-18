@@ -1,4 +1,4 @@
-FROM dunglas/frankenphp:1-php8.2-alpine
+FROM dunglas/frankenphp:1-php8.4-alpine
 
 RUN apk add --no-cache bash git unzip openssh-client
 
