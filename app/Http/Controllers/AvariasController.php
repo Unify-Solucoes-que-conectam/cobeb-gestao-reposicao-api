@@ -140,6 +140,40 @@ class AvariasController extends Controller
     }
 
     /**
+     * Atualiza os dados de uma avaria existente.
+     */
+    public function update(StoreAvariaRequest $request, string $id)
+    {
+        try {
+
+            // 1. Valida se os campos obrigatórios estão presentes
+            $request->validate([
+                'produto_id' => 'required|exists:produtos,id',
+                'quantidade_avariada' => 'required|integer|min:1',
+            ]);
+
+            $avaria = Avaria::findOrFail($id);
+
+            // Atualiza os campos da avaria
+            $avaria->update($request->only(['cliente_id', 'mapa_id']));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Avaria atualizada com sucesso.',
+                'data' => $avaria
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Erro ao atualizar avaria: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Ocorreu um erro ao atualizar a avaria.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Aprova ou reprova uma avaria.
      *
      * @param Request $request
