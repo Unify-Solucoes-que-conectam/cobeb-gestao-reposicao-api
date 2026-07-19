@@ -182,11 +182,11 @@ class AvariasController extends Controller
      */
     public function updateStatus(Request $request, string $id)
     {
-        // 1. Valida se o status enviado é estritamente 'aprovado' ou 'reprovado'
+        // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
-            'status' => ['required', 'string', 'in:aprovado,reprovado'],
+            'status' => ['required', 'string', 'in:aprovada,reprovada'],
         ], [
-            'status.in' => 'O status deve ser apenas aprovado ou reprovado.'
+            'status.in' => 'O status deve ser apenas aprovada ou reprovada.'
         ]);
 
         try {

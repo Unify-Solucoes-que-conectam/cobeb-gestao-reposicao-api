@@ -9,10 +9,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('avarias', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->string('id', 8)->primary();
             $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
             $table->foreignUuid('mapa_id')->nullable()->constrained('mapas')->nullOnDelete();
-            $table->enum('status', ['pendente', 'reprovado', 'aprovado'])->default('pendente');
+            $table->enum('status', ['pendente', 'reprovada', 'aprovada'])->default('pendente');
             $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
             $table->timestamps();
         });
