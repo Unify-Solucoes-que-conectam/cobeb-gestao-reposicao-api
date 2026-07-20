@@ -20,7 +20,6 @@ class AvariaResource extends JsonResource
             // Aqui carregamos os objetos
             'cliente' => new ClienteResource($this->whenLoaded('cliente')),
             'notas_fiscais' => NotaFiscalAvariaResource::collection($this->whenLoaded('notasFiscais')),
-            'produtos' => ProdutoAvariaResource::collection($this->whenLoaded('produtos')),
             'mapa' => new MapaResource($this->whenLoaded('mapa')),
             'anexos' => AnexosAvariaResource::collection($this->whenLoaded('anexos')),
             'status' => $this->status,
