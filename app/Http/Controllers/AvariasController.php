@@ -261,7 +261,7 @@ class AvariasController extends Controller
 
             // Enviar via WhatsApp
             $whatsapp = new WhatsAppService();
-            $sent = $whatsapp->sendMessage('37998247669', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso. Agradecemos pela sua paciência e compreensão.");
+            $sent = $whatsapp->sendMessage('37991946275', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso.");
 
             if (!$sent) {
                 Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
