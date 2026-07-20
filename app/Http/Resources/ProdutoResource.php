@@ -18,17 +18,13 @@ class ProdutoResource extends JsonResource
             'id' => $this->id,
 
             // Aqui carregamos os objetos
-            'descricao' => $this->descricao,
             'codigo' => $this->codigo,
-            'valor_unitario' => $this->valor_unitario,
+            'descricao' => $this->descricao,
+            'marca' => new TipoMarcaResource($this->whenLoaded('tipoMarca')),
+            'embalagem' => new EmbalagemResource($this->whenLoaded('embalagem')),
             'ean' => $this->ean,
-
-            'usuario_responsavel_id' => $this->usuario_responsavel_id,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
-
-            'tipo_marca' => $this->whenLoaded('tipoMarca'),
-            'embalagem' => $this->whenLoaded('embalagem'),
         ];
     }
 }

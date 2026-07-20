@@ -2,12 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 class Avaria extends Model
 {
-    use HasUuids;
 
     protected $table = 'avarias';
 
@@ -23,6 +21,18 @@ class Avaria extends Model
         'status',
         'usuario_responsavel_id',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Antes de criar um registro novo, gera o ID
+        static::creating(function ($avaria) {
+            if (empty($avaria->id)) {
+                $avaria->id = self::gerarIdUnico();
+            }
+        });
+    }
 
     public function usuario()
     {
@@ -52,5 +62,13 @@ class Avaria extends Model
     public function anexos()
     {
         return $this->hasMany(AnexosAvaria::class, 'avaria_id');
+    }
+    protected static function gerarIdUnico()
+    {
+        do {
+            $id = substr(str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 8);
+        } while (self::where('id', $id)->exists());
+
+        return $id;
     }
 }

@@ -25,7 +25,8 @@ class StoreAvariaRequest extends FormRequest
 
             // Validação dos Anexos (Assumindo que os caminhos/arquivos já foram gerados ou serão enviados)
             'anexos' => 'nullable|array',
-            'anexos.*' => 'string',
+            'anexos.*.nome' => 'required|string',
+            'anexos.*.base64' => 'required|string',
         ];
     }
 }

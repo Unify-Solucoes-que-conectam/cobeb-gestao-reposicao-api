@@ -7,24 +7,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class AvariaResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
         return [
             'id' => $this->id,
-
-            // Aqui carregamos os objetos
+            'anexos' => AnexosAvariaResource::collection($this->whenLoaded('anexos')),
             'cliente' => new ClienteResource($this->whenLoaded('cliente')),
             'notas_fiscais' => NotaFiscalAvariaResource::collection($this->whenLoaded('notasFiscais')),
-            'produtos' => ProdutoAvariaResource::collection($this->whenLoaded('produtos')),
             'mapa' => new MapaResource($this->whenLoaded('mapa')),
-            'anexos' => AnexosAvariaResource::collection($this->whenLoaded('anexos')),
             'status' => $this->status,
-
             'usuario_responsavel_id' => $this->usuario_responsavel_id,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Support\WhatsAppService;
+use Illuminate\Support\Facades\Storage;
 
 class AvariasController extends Controller
 {
@@ -36,15 +37,16 @@ class AvariasController extends Controller
             }
 
             $avarias = $query->with([
+                'anexos',
                 'cliente',
                 'mapa',
                 'mapa.motorista.filial',
                 'mapa.motorista.cluster',
                 'notasFiscais.nota_fiscal',
-                'produtos.produto',
-                'produtos.tipoAvaria',
-                'produtos.produto.tipoMarca',
-                'anexos'
+                'notasFiscais.avaria.produtos',
+                'notasFiscais.nota_fiscal.produtos.produto',
+                'notasFiscais.nota_fiscal.produtos.produto.tipoMarca',
+                'notasFiscais.nota_fiscal.produtos.produto.embalagem',
             ])->get();
 
             // filtra avarias pelo clienteId
@@ -108,7 +110,46 @@ class AvariasController extends Controller
 
                 // 4. Salva os Anexos
                 if ($request->has('anexos')) {
-                    foreach ($request->anexos as $caminhoAnexo) {
+                    foreach ($request->anexos as $anexo) {
+
+                        // Pega o nome do frontend, ou usa um genérico se falhar
+                        $nomeOriginal = $anexo['nome'] ?? 'anexo_sem_nome.jpg';
+                        $base64Anexo = $anexo['base64'];
+
+                        // 1. Descobre a extensão real baseada no cabeçalho base64 do frontend
+                        $extensaoReal = 'jpg'; // fallback
+                        if (preg_match('/^data:image\/([a-zA-Z0-9]+);base64,/', $base64Anexo, $type)) {
+                            $extensaoReal = strtolower($type[1]);
+                        } else {
+                            // Se não tiver cabeçalho, tenta extrair a extensão do nome original
+                            $extensaoReal = pathinfo($nomeOriginal, PATHINFO_EXTENSION) ?: 'jpg';
+                        }
+
+                        // 2. Remove a parte "data:image/png;base64," do começo da string
+                        if (strpos($base64Anexo, ',') !== false) {
+                            $base64Anexo = explode(',', $base64Anexo)[1];
+                        }
+
+                        // 3. Corrige possíveis espaços em branco que quebram o base64 e decodifica
+                        $base64Anexo = str_replace(' ', '+', $base64Anexo);
+                        $anexoDecodificado = base64_decode($base64Anexo);
+
+                        if ($anexoDecodificado === false) {
+                            continue; // Pula para a próxima foto se o arquivo estiver corrompido
+                        }
+
+                        // 4. Formata um nome de arquivo seguro usando o nome original
+                        $nomeSemExtensao = pathinfo($nomeOriginal, PATHINFO_FILENAME);
+                        $nomeLimpo = \Illuminate\Support\Str::slug($nomeSemExtensao); // Remove acentos e espaços
+
+                        // Exemplo do resultado final: 650a1b2c_foto-da-garrafa.png
+                        $nomeArquivo = uniqid() . '_' . $nomeLimpo . '.' . $extensaoReal;
+                        $caminhoAnexo = 'anexos_avarias/' . $nomeArquivo;
+
+                        // Salva fisicamente o arquivo
+                        Storage::disk('public')->put($caminhoAnexo, $anexoDecodificado);
+
+                        // 5. Salva no banco de dados
                         AnexosAvaria::create([
                             'avaria_id' => $avaria->id,
                             'path' => $caminhoAnexo,
@@ -140,6 +181,53 @@ class AvariasController extends Controller
     }
 
     /**
+     * Atualiza a quantidade de um produto específico em uma avaria (via Nota Fiscal).
+     */
+    public function updateQuantidadeProduto(Request $request, string $avariaId, string $produtoId)
+    {
+        // Valida se a nova quantidade foi enviada e é um número válido
+        $request->validate([
+            'quantidade' => 'required|integer|min:1',
+        ]);
+
+        try {
+            // 1. Descobre os IDs de todas as notas fiscais vinculadas a esta avaria
+            $notasFiscaisIds = \App\Models\NotasFiscaisAvaria::where('avaria_id', $avariaId)
+                ->pluck('nota_fiscal_id');
+
+            // 2. Busca o registro do produto cruzando com as notas fiscais encontradas
+            $produtoNota = \App\Models\ProdutoNotaFiscal::whereIn('nota_fiscal_id', $notasFiscaisIds)
+                ->where('produto_id', $produtoId)
+                ->firstOrFail();
+
+            // 3. Atualiza a quantidade correta na tabela produtos_nota_fiscal
+            $produtoNota->update([
+                'quantidade' => $request->quantidade,
+                'usuario_responsavel_id' => $request->user()->id // Opcional, para rastrear quem editou
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Quantidade atualizada com sucesso.',
+                'data' => $produtoNota
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Produto não encontrado nas notas fiscais desta avaria.'
+            ], 404);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Erro ao atualizar quantidade do produto na avaria: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Ocorreu um erro ao atualizar a quantidade.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Aprova ou reprova uma avaria.
      *
      * @param Request $request
@@ -148,11 +236,11 @@ class AvariasController extends Controller
      */
     public function updateStatus(Request $request, string $id)
     {
-        // 1. Valida se o status enviado é estritamente 'aprovado' ou 'reprovado'
+        // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
-            'status' => ['required', 'string', 'in:aprovado,reprovado'],
+            'status' => ['required', 'string', 'in:aprovada,reprovada'],
         ], [
-            'status.in' => 'O status deve ser apenas aprovado ou reprovado.'
+            'status.in' => 'O status deve ser apenas aprovada ou reprovada.'
         ]);
 
         try {
