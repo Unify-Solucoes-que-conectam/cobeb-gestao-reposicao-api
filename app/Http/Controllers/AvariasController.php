@@ -112,14 +112,44 @@ class AvariasController extends Controller
                 if ($request->has('anexos')) {
                     foreach ($request->anexos as $anexo) {
 
-                        // Decodifica o arquivo base64
-                        $anexoDecodificado = base64_decode($anexo['base64']);
+                        // Pega o nome do frontend, ou usa um genérico se falhar
+                        $nomeOriginal = $anexo['nome'] ?? 'anexo_sem_nome.jpg';
+                        $base64Anexo = $anexo['base64'];
 
-                        // Salva o arquivo em storage/app/public/anexos_avarias
-                        $nomeArquivo = uniqid('anexo_') . '.jpg';
+                        // 1. Descobre a extensão real baseada no cabeçalho base64 do frontend
+                        $extensaoReal = 'jpg'; // fallback
+                        if (preg_match('/^data:image\/([a-zA-Z0-9]+);base64,/', $base64Anexo, $type)) {
+                            $extensaoReal = strtolower($type[1]);
+                        } else {
+                            // Se não tiver cabeçalho, tenta extrair a extensão do nome original
+                            $extensaoReal = pathinfo($nomeOriginal, PATHINFO_EXTENSION) ?: 'jpg';
+                        }
+
+                        // 2. Remove a parte "data:image/png;base64," do começo da string
+                        if (strpos($base64Anexo, ',') !== false) {
+                            $base64Anexo = explode(',', $base64Anexo)[1];
+                        }
+
+                        // 3. Corrige possíveis espaços em branco que quebram o base64 e decodifica
+                        $base64Anexo = str_replace(' ', '+', $base64Anexo);
+                        $anexoDecodificado = base64_decode($base64Anexo);
+
+                        if ($anexoDecodificado === false) {
+                            continue; // Pula para a próxima foto se o arquivo estiver corrompido
+                        }
+
+                        // 4. Formata um nome de arquivo seguro usando o nome original
+                        $nomeSemExtensao = pathinfo($nomeOriginal, PATHINFO_FILENAME);
+                        $nomeLimpo = \Illuminate\Support\Str::slug($nomeSemExtensao); // Remove acentos e espaços
+
+                        // Exemplo do resultado final: 650a1b2c_foto-da-garrafa.png
+                        $nomeArquivo = uniqid() . '_' . $nomeLimpo . '.' . $extensaoReal;
                         $caminhoAnexo = 'anexos_avarias/' . $nomeArquivo;
+
+                        // Salva fisicamente o arquivo
                         Storage::disk('public')->put($caminhoAnexo, $anexoDecodificado);
 
+                        // 5. Salva no banco de dados
                         AnexosAvaria::create([
                             'avaria_id' => $avaria->id,
                             'path' => $caminhoAnexo,
