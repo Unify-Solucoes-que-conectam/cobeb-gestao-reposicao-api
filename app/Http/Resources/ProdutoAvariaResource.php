@@ -21,7 +21,8 @@ class ProdutoAvariaResource extends JsonResource
                 'id' => $this->produto->id,
                 'codigo' => $this->produto->codigo,
                 'descricao' => $this->produto->descricao,
-                'tipo_marca' => $this->whenLoaded('produto') ? $this->produto->tipo_marca : null,
+                'tipo_marca' => $this->produto->tipo_marca,
+                'embalagem' => $this->produto->embalagem,
                 'valor_unitario' => $this->produto->valor_unitario,
             ]),
 

@@ -41,10 +41,8 @@ class AvariasController extends Controller
                 'mapa.motorista.filial',
                 'mapa.motorista.cluster',
                 'notasFiscais.nota_fiscal',
-                'notasFiscais.nota_fiscal.produtos',
+                'notasFiscais.avaria.produtos',
                 'notasFiscais.nota_fiscal.produtos.produto',
-                'notasFiscais.nota_fiscal.produtos.produto.tipoMarca',
-                'notasFiscais.nota_fiscal.produtos.produto.embalagem',
                 'anexos'
             ])->get();
 

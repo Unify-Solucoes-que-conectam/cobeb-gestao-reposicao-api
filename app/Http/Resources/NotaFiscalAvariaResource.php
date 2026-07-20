@@ -8,18 +8,26 @@ use App\Http\Resources\ProdutosNotaFiscalResource;
 
 class NotaFiscalAvariaResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
         return [
             'id' => $this->id,
 
-            // Aqui carregamos os objetos
             $this->mergeWhen($this->relationLoaded('nota_fiscal'), function () {
+
+                // 1. Pega os IDs dos produtos que foram marcados como avariados nessa Avaria
+                $produtosAvariadosIds = [];
+                if ($this->relationLoaded('avaria') && $this->avaria->relationLoaded('produtos')) {
+                    $produtosAvariadosIds = $this->avaria->produtos->pluck('produto_id')->toArray();
+                }
+
+                // 2. Filtra os produtos da Nota Fiscal para manter APENAS os avariados
+                $produtosFiltrados = $this->nota_fiscal->relationLoaded('produtos')
+                    ? $this->nota_fiscal->produtos->filter(function ($itemNota) use ($produtosAvariadosIds) {
+                        return in_array($itemNota->produto_id, $produtosAvariadosIds);
+                    })
+                    : collect([]);
+
                 return [
                     'id' => $this->nota_fiscal->id,
                     'numero' => $this->nota_fiscal->numero,
@@ -31,10 +39,8 @@ class NotaFiscalAvariaResource extends JsonResource
                     'valor_total' => $this->nota_fiscal->valor_total,
                     'status' => $this->nota_fiscal->status,
 
-                    // Condiciona a exibição dos produtos ao fato deles estarem carregados
-                    'produtos' => $this->nota_fiscal->relationLoaded('produtos')
-                        ? ProdutosNotaFiscalResource::collection($this->nota_fiscal->produtos)
-                        : [],
+                    // 3. Retorna a coleção filtrada
+                    'produtos' => ProdutosNotaFiscalResource::collection($produtosFiltrados),
 
                     'created_at' => $this->nota_fiscal->created_at,
                     'updated_at' => $this->nota_fiscal->updated_at,
