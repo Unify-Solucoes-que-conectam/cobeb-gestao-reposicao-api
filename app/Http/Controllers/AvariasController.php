@@ -43,6 +43,8 @@ class AvariasController extends Controller
                 'notasFiscais.nota_fiscal',
                 'notasFiscais.avaria.produtos',
                 'notasFiscais.nota_fiscal.produtos.produto',
+                'notasFiscais.nota_fiscal.produtos.produto.tipoMarca',
+                'notasFiscais.nota_fiscal.produtos.produto.embalagem',
                 'anexos'
             ])->get();
 
