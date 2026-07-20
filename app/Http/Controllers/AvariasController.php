@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Support\WhatsAppService;
+use Illuminate\Support\Facades\Storage;
 
 class AvariasController extends Controller
 {
@@ -36,6 +37,7 @@ class AvariasController extends Controller
             }
 
             $avarias = $query->with([
+                'anexos',
                 'cliente',
                 'mapa',
                 'mapa.motorista.filial',
@@ -45,7 +47,6 @@ class AvariasController extends Controller
                 'notasFiscais.nota_fiscal.produtos.produto',
                 'notasFiscais.nota_fiscal.produtos.produto.tipoMarca',
                 'notasFiscais.nota_fiscal.produtos.produto.embalagem',
-                'anexos'
             ])->get();
 
             // filtra avarias pelo clienteId
@@ -109,7 +110,16 @@ class AvariasController extends Controller
 
                 // 4. Salva os Anexos
                 if ($request->has('anexos')) {
-                    foreach ($request->anexos as $caminhoAnexo) {
+                    foreach ($request->anexos as $anexo) {
+
+                        // Decodifica o arquivo base64
+                        $anexoDecodificado = base64_decode($anexo['base64']);
+
+                        // Salva o arquivo em storage/app/public/anexos_avarias
+                        $nomeArquivo = uniqid('anexo_') . '.jpg';
+                        $caminhoAnexo = 'anexos_avarias/' . $nomeArquivo;
+                        Storage::disk('public')->put($caminhoAnexo, $anexoDecodificado);
+
                         AnexosAvaria::create([
                             'avaria_id' => $avaria->id,
                             'path' => $caminhoAnexo,

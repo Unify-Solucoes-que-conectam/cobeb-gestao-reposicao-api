@@ -16,8 +16,6 @@ class AnexosAvariaResource extends JsonResource
     {
         return [
             'id' => $this->id,
-
-            // Aqui carregamos os objetos
             'path' => $this->path,
 
             'created_at' => $this->created_at,
