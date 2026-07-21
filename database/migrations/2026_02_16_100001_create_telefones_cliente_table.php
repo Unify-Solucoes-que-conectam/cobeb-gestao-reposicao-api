@@ -12,8 +12,7 @@ return new class extends Migration
       $table->uuid('id')->primary();
       $table->string('numero')->nullable();
       $table->foreignUuid('cliente_id')->constrained('clientes')->cascadeOnDelete();
-      $table->boolean('principal')->default(false);
-      $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+      $table->boolean('isWhatsapp')->default(false);
       $table->timestamps();
 
       $table->unique(['cliente_id', 'numero']);

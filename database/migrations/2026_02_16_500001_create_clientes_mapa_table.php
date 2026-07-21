@@ -10,9 +10,8 @@ return new class extends Migration
   {
     Schema::create('clientes_mapa', function (Blueprint $table) {
       $table->uuid('id')->primary();
-      $table->foreignUuid('mapa_id')->nullable()->constrained('mapas')->nullOnDelete();
       $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
-      $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+      $table->foreignUuid('mapa_id')->nullable()->constrained('mapas')->nullOnDelete();
       $table->timestamps();
     });
   }
