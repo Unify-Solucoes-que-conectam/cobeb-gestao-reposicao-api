@@ -88,6 +88,16 @@ class Motorista extends Model
         ];
     }
 
+    public function mapas()
+    {
+        return $this->hasMany(Mapa::class, 'motorista_id');
+    }
+
+    public function mapaAtual()
+    {
+        return $this->hasOne(Mapa::class, 'motorista_id')->where('data_entrega', now()->toDateString());
+    }
+
     public function filial()
     {
         return $this->belongsTo(Filial::class);

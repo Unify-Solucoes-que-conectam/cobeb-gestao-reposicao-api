@@ -135,4 +135,9 @@ class Usuario extends Authenticatable
     {
         return $this->belongsToMany(Menu::class, 'usuarios_menus_favoritos', 'usuario_id', 'menu_id');
     }
+
+    public function motorista()
+    {
+        return $this->hasOne(Motorista::class, 'usuario_id');
+    }
 }

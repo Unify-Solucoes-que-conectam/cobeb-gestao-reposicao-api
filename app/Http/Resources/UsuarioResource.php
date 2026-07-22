@@ -14,6 +14,14 @@ class UsuarioResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        return parent::toArray($request);
+        return [
+            'id' => $this->id,
+            'nome' => $this->nome,
+            'cpf' => $this->cpf,
+            'role' => $this->role,
+            'primeiro_acesso' => $this->primeiro_acesso,
+
+            'motorista' => MotoristaResource::make($this->whenLoaded('motorista')),
+        ];
     }
 }

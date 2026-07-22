@@ -30,6 +30,7 @@ class MotoristasController extends Controller
         }
 
         $motoristas = $query->with([
+            'mapaAtual',
             'usuario',
             'filial',
             'cluster'
@@ -199,7 +200,7 @@ class MotoristasController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Motorista encontrado com sucesso.',
-                'data' => MotoristaResource::make($motorista->load(['usuario', 'filial', 'cluster']))
+                'data' => MotoristaResource::make($motorista->load(['mapaAtual', 'usuario', 'filial', 'cluster']))
             ]);
         } catch (\Exception $e) {
             return response()->json([

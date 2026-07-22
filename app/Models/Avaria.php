@@ -17,9 +17,12 @@ class Avaria extends Model
 
     protected $fillable = [
         'cliente_id',
-        'mapa_id',
+        'motorista_id',
         'status',
-        'usuario_responsavel_id',
+        'data_emissao',
+        'aprovador_id',
+        'data_aprovacao',
+        'motivo_reprovacao'
     ];
 
     protected static function boot()
@@ -34,35 +37,31 @@ class Avaria extends Model
         });
     }
 
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
-    }
-
     public function cliente()
     {
         return $this->belongsTo(Cliente::class, 'cliente_id');
     }
 
-    public function mapa()
+    public function motorista()
     {
-        return $this->belongsTo(Mapa::class, 'mapa_id');
+        return $this->belongsTo(Motorista::class, 'motorista_id');
     }
 
-    public function notasFiscais()
+    public function aprovador()
     {
-        return $this->hasMany(NotasFiscaisAvaria::class, 'avaria_id');
-    }
-
-    public function produtos()
-    {
-        return $this->hasMany(ProdutosAvaria::class, 'avaria_id');
+        return $this->belongsTo(Usuario::class, 'aprovador_id');
     }
 
     public function anexos()
     {
         return $this->hasMany(AnexosAvaria::class, 'avaria_id');
     }
+
+    public function itens()
+    {
+        return $this->hasMany(ItemAvaria::class, 'avaria_id');
+    }
+
     protected static function gerarIdUnico()
     {
         do {

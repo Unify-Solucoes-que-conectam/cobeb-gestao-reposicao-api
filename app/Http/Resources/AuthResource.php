@@ -5,7 +5,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class MapaResource extends JsonResource
+class AuthResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -15,11 +15,8 @@ class MapaResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->id,
-            'codigo' => $this->codigo,
-            'motorista' => new MotoristaResource($this->whenLoaded('motorista')),
-            'data_entrega' => $this->data_entrega,
-            'placa' => $this->placa,
+            'usuario' => new UsuarioResource($this->whenLoaded('usuario')),
+            'menus' => new MenuResource($this->whenLoaded('menus')),
         ];
     }
 }
