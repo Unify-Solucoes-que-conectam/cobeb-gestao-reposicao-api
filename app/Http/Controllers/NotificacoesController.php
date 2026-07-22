@@ -1,13 +1,11 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use Illuminate\Support\Str;
+use App\Events\GlobalEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Notificacao;
-use App\Models\Usuario;
-use App\Notifications\UserNotification;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class NotificacoesController extends Controller
@@ -26,41 +24,21 @@ class NotificacoesController extends Controller
                 'tipo' => ['required', 'string', 'in:info,warning,error,success'],
                 'menu_id' => ['nullable', 'exists:menus,id'],
                 'link' => ['nullable', 'string'],
-                'usuarios' => ['array'],
-                'usuarios.*' => ['exists:usuarios,id'],
             ]);
 
-            $usuariosIds = $request->input('usuarios', []);
-            $query = Usuario::query();
+            $data = $request->only(['titulo', 'mensagem', 'tipo', 'menu_id', 'link']);
+            $requestOnly = array_merge($data, [
+                'id' => (string) Str::uuid(),
+                'data_envio' => now()
+            ]);
 
-            if (empty($usuariosIds)) {
-                $usuarios = $query->get();
-            }
-            else {
-                $query->where(function ($q) use ($usuariosIds) {
-                    if (!empty($usuariosIds)) {
-                        $q->orWhereIn('id', $usuariosIds);
-                    }
-                });
+            Notificacao::create($requestOnly);
 
-                $usuarios = $query->get()->unique('id')->values();
-            }
-
-            $requestData = $request->only(['titulo', 'mensagem', 'tipo', 'menu_id', 'link']);
-
-            foreach ($usuarios as $usuario) {
-                $data = array_merge($requestData, [
-                    'usuario_id' => $usuario->id,
-                    'id' => Str::uuid()->toString(),
-                ]);
-
-                $usuario->notify(new UserNotification($data));
-            }
+            event(new GlobalEvent($data));
 
             return response()->json([
                 'success' => true,
                 'message' => 'Notificação disparada com sucesso.',
-                'data' => $usuarios,
             ]);
         } catch (ValidationException $e) {
             return response()->json([
