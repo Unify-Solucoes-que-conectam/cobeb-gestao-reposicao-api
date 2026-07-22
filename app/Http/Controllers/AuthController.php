@@ -103,7 +103,7 @@ class AuthController extends Controller
             'message' => 'Login realizado com sucesso.',
             'data' => [
                 'token' => $token,
-                'usuario' => UsuarioResource::make($user->load('motorista')),
+                'usuario' => UsuarioResource::make($user->load('motorista', 'motorista.mapaAtual')),
                 'menus' => MenuResource::collection($menus),
             ],
         ]);
