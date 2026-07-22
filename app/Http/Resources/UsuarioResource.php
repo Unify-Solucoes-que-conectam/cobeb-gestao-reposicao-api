@@ -19,7 +19,7 @@ class UsuarioResource extends JsonResource
             'nome' => $this->nome,
             'cpf' => $this->cpf,
             'role' => $this->role,
-            'primeiro_acesso' => $this->primeiro_acesso,
+            'primeiro_acesso' => (bool) $this->primeiro_acesso,
 
             'motorista' => MotoristaResource::make($this->whenLoaded('motorista')),
         ];
