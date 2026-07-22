@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 use Illuminate\Support\Str;
 use App\Events\GlobalEvent;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\NotificacaoResource;
 use App\Models\Notificacao;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -70,26 +71,14 @@ class NotificacoesController extends Controller
 
         $notificacoes = Notificacao::query()
             ->with('menu')
-            ->where('usuario_id', $user->id)
             ->orderBy('data_envio', 'asc')
             ->get()
-            ->map(function (Notificacao $notificacao) {
-                return [
-                    'id' => $notificacao->id,
-                    'titulo' => $notificacao->titulo,
-                    'mensagem' => $notificacao->mensagem,
-                    'tipo' => $notificacao->tipo,
-                    'link' => $notificacao->menu ? $notificacao->menu->rota : null,
-                    'data_envio' => $notificacao->data_envio,
-                    'lida' => $notificacao->data_leitura !== null,
-                ];
-            })
         ;
 
         return response()->json([
             'success' => true,
             'message' => 'Notificações consultadas com sucesso.',
-            'data' => $notificacoes,
+            'data' => NotificacaoResource::collection($notificacoes),
         ]);
     }
 
