@@ -36,6 +36,37 @@ class FiliaisController extends Controller
         }
     }
 
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), Filial::createRules(), Filial::messages());
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ]);
+        }
+
+        // lógica para criar uma nova filial
+        try {
+            Filial::create([
+                'descricao' => $request->descricao,
+                'codigo' => $request->codigo,
+                'usuario_responsavel_id' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Filial cadastrada com sucesso.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao cadastrar filial: ' . $e->getMessage()
+            ]);
+        }
+    }
+
     // função para atualizar os dados da filial
     public function update(Request $request, $id)
     {

@@ -5,11 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-class TipoPessoa extends Model
+class ClienteTelefones extends Model
 {
     use HasUuids;
 
-    protected $table = 'tipos_pessoa';
+    protected $table = 'cliente_telefones';
 
     public $timestamps = true;
 
@@ -18,13 +18,13 @@ class TipoPessoa extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'codigo',
-        'descricao',
-        'usuario_responsavel_id',
+        'cliente_id',
+        'numero',
+        'isWhatsapp',
     ];
 
-    public function usuario()
+    public function cliente()
     {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
+        return $this->belongsTo(Cliente::class, 'cliente_id');
     }
 }

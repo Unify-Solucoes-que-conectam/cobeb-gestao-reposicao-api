@@ -38,18 +38,14 @@ class Usuario extends Authenticatable
 
     protected $table = 'usuarios';
 
-    protected $casts = [
-        'status' => 'bool',
-    ];
-
     protected $hidden = [
         'senha',
     ];
 
     protected $fillable = [
         'nome',
-        'senha',
         'cpf',
+        'senha',
         'role',
         'primeiro_acesso',
     ];

@@ -19,22 +19,8 @@ class NotaFiscal extends Model
         'numero',
         'pedido',
         'cliente_id',
-        'mapa',
-        'data_operacao',
+        'operacao',
         'data_emissao',
-        'valor_bruto',
-        'total_desconto',
-        'valor_total',
-        'status',
-        'usuario_responsavel_id',
-    ];
-
-    protected $casts = [
-        'data_operacao' => 'date',
-        'data_emissao' => 'date',
-        'valor_bruto' => 'decimal:2',
-        'total_desconto' => 'decimal:2',
-        'valor_total' => 'decimal:2',
     ];
 
     public function cliente()
@@ -45,10 +31,5 @@ class NotaFiscal extends Model
     public function produtos()
     {
         return $this->hasMany(ProdutoNotaFiscal::class, 'nota_fiscal_id');
-    }
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
     }
 }

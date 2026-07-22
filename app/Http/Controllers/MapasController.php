@@ -37,4 +37,28 @@ class MapasController extends Controller
             ], 500);
         }
     }
+
+    public function show(Mapa $mapa)
+    {
+        try {
+            $mapa->load([
+                'clientes',
+                'clientes.cliente',
+                'motorista.filial',
+                'motorista.cluster'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Mapa carregado com sucesso.',
+                'data'    => new MapaResource($mapa)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar mapa.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
 }

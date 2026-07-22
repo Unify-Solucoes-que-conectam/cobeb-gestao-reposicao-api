@@ -6,6 +6,7 @@ use App\Events\ImportProgressUpdated;
 use App\Models\Categoria;
 use App\Models\Cliente;
 use App\Models\ClientesMapa;
+use App\Models\ClienteTelefones;
 use App\Models\Cluster;
 use App\Models\Embalagem;
 use App\Models\Filial;
@@ -16,152 +17,245 @@ use App\Models\NotaFiscal;
 use App\Models\Produto;
 use App\Models\ProdutoNotaFiscal;
 use App\Models\TipoMarca;
-use App\Models\TipoPessoa;
 use App\Models\Usuario;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
-use Maatwebsite\Excel\Concerns\OnEachRow;
+use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithCustomCsvSettings;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Row;
 
-class GenericImport implements OnEachRow, WithChunkReading, WithHeadingRow, WithCustomCsvSettings
+class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, WithCustomCsvSettings
 {
     private string $batchId;
-    private string $userId;
     private string $type;
     private int $totalRows;
     private int $processedRows = 0;
     private int $errorCount = 0;
-    private int $updateEvery;
 
-    public function __construct(string $batchId, string $userId, string $type, int $totalRows, int $updateEvery = 10)
+    // Array para cache em memória das Foreign Keys e evitar N+1 queries
+    private array $fkCache = [];
+
+    public function __construct(string $batchId, string $type, int $totalRows)
     {
         $this->batchId = $batchId;
-        $this->userId = $userId;
         $this->type = $type;
         $this->totalRows = $totalRows;
-        $this->updateEvery = $updateEvery;
     }
 
-    public function onRow(Row $row): void
+    /**
+     * Processa um chunk inteiro de uma vez (por padrão 500 linhas)
+     */
+    public function collection(Collection $rows): void
     {
-        $rowIndex = $row->getIndex();
-        $data = $this->normalizeKeys($row->toArray());
+        foreach ($rows as $row) {
+            $data = $row->toArray();
 
-        try {
-            $this->importRow($data, $rowIndex);
-            $this->processedRows++;
-            $identifier = $this->getRowIdentifier($data);
-            $this->updateProgress($rowIndex, 'Imported ' . $identifier);
-        } catch (\Throwable $exception) {
-            $this->processedRows++;
-            $this->errorCount++;
-            $identifier = $this->getRowIdentifier($data);
-            $this->updateProgress($rowIndex, 'Error: ' . $identifier . ' — ' . Str::limit($exception->getMessage(), 80));
-            Log::warning('Import row failed', [
-                'batch_id' => $this->batchId,
-                'row' => $rowIndex,
-                'error' => $exception->getMessage(),
-            ]);
+            try {
+                $this->importRow($data);
+                $this->processedRows++;
+            } catch (\Throwable $exception) {
+                $this->processedRows++;
+                $this->errorCount++;
+
+                Log::warning('Import row failed', [
+                    'batch_id' => $this->batchId,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         }
+
+        // Atualiza o progresso no banco e dispara o WebSocket apenas UMA VEZ no final do chunk
+        $this->updateProgress();
     }
 
-    private function importRow(array $data, int $rowIndex): void
+    private function importRow(array $data): void
     {
         match ($this->type) {
-            'filiais', 'tipos_pessoa', 'tipos_marca', 'embalagens', 'clusters', 'categorias'
-            => $this->importLookup($data),
             'clientes' => $this->importCliente($data),
-            'produtos' => $this->importProduto($data),
             'motoristas' => $this->importMotorista($data),
-            'notas_fiscais' => $this->importNotaFiscal($data),
-            'produtos_nf' => $this->importProdutoNf($data),
+            'produtos' => $this->importProduto($data),
+            'mapas' => $this->importMapa($data),
+            'vendas_trocas' => $this->importVendaTroca($data),
             default => throw new \RuntimeException("Tipo de importação desconhecido: {$this->type}"),
         };
-    }
-
-    // ─── Lookup (codigo + descricao) ────────────────────────────────────
-
-    private function importLookup(array $data): void
-    {
-        $codigo = Arr::get($data, 'codigo');
-        $descricao = Arr::get($data, 'descricao');
-
-        if ($codigo === null || $descricao === null) {
-            throw new \RuntimeException('Missing codigo or descricao');
-        }
-
-        $this->resolveModel()::updateOrCreate(
-            ['codigo' => $codigo],
-            [
-                'descricao' => $descricao,
-                'usuario_responsavel_id' => $this->userId,
-            ]
-        );
     }
 
     // ─── Clientes ───────────────────────────────────────────────────────
 
     private function importCliente(array $data): void
     {
-        $codigo = Arr::get($data, 'codigo');
-        $nomeFantasia = Arr::get($data, 'nome_fantasia');
+        // Com o WithHeadingRow, o cabeçalho original é formatado para slug
+        $codigo = Arr::get($data, 'cod_pdv');
+        $documento = trim((string) Arr::get($data, 'documento'));
+        $nomeFantasia = trim((string) Arr::get($data, 'nome_fantasia'));
+        $razaoSocial = trim((string) Arr::get($data, 'razao_social'));
+        $endereco = trim((string) Arr::get($data, 'endereco'));
+        $complemento = trim((string) Arr::get($data, 'complemento'));
+        $bairro = trim((string) Arr::get($data, 'bairro'));
+        $cidade = trim((string) Arr::get($data, 'cidade'));
+        $uf = trim((string) Arr::get($data, 'uf'));
+        $cep = trim((string) Arr::get($data, 'cep'));
+        $filial = trim((string) Arr::get($data, 'filial'));
+        $descCategoria = trim((string) Arr::get($data, 'categoria'));
+        $tipoPessoa = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Arr::get($data, 'tipo_de_pessoa')));
+        $status = trim((string) Str::lower(Arr::get($data, 'status_do_pdv')));
 
         if (blank($codigo) || blank($nomeFantasia)) {
-            throw new \RuntimeException('Missing codigo or nome_fantasia');
+            throw new \RuntimeException('Faltando Cód PDV ou Nome Fantasia');
         }
 
-        $categoriaId = $this->resolveFk(Categoria::class, 'codigo', Arr::get($data, 'categoria_codigo'));
-        $tipoPessoaId = $this->resolveFk(TipoPessoa::class, 'codigo', Arr::get($data, 'tipo_pessoa_codigo'));
+        /**
+         * Como o arquivo de importação contém apenas a descrição da categoria cadastramos apenas a descriçao e guardamos o id
+         * para referenciar na tabela de clientes. Se a categoria já existir, apenas pegamos o id dela.
+         */
+        $categoriaId = null;
 
-        Cliente::updateOrCreate(
+        if (!blank($descCategoria)) {
+            $cacheKey = 'categoria_' . Str::slug($descCategoria);
+
+            if (!isset($this->fkCache[$cacheKey])) {
+                $categoria = Categoria::firstOrCreate([
+                    'descricao' => $descCategoria
+                ]);
+                $this->fkCache[$cacheKey] = $categoria->id;
+            }
+            $categoriaId = $this->fkCache[$cacheKey];
+        }
+
+        $cliente = Cliente::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'documento' => Arr::get($data, 'documento'),
+                'documento' => $documento,
                 'nome_fantasia' => $nomeFantasia,
-                'razao_social' => Arr::get($data, 'razao_social'),
-                'endereco' => Arr::get($data, 'endereco'),
-                'complemento' => Arr::get($data, 'complemento'),
-                'bairro' => Arr::get($data, 'bairro'),
-                'cidade' => Arr::get($data, 'cidade'),
-                'uf' => Arr::get($data, 'uf'),
-                'cep' => Arr::get($data, 'cep'),
-                'latitude' => $this->toDecimal(Arr::get($data, 'latitude')),
-                'longitude' => $this->toDecimal(Arr::get($data, 'longitude')),
+                'razao_social' => $razaoSocial,
+                'endereco' => $endereco,
+                'complemento' => $complemento,
+                'bairro' => $bairro,
+                'cidade' => $cidade,
+                'uf' => $uf,
+                'cep' => $cep,
+                'latitude' => null,
+                'longitude' => null,
+                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $filial),
                 'categoria_id' => $categoriaId,
-                'tipo_pessoa_id' => $tipoPessoaId,
-                'pdv_ativo' => $this->toBool(Arr::get($data, 'pdv_ativo'), true),
-                'usuario_responsavel_id' => $this->userId,
+                'tipo_pessoa' => $tipoPessoa, // remover caracteres especiais
+                'status' => $status,
             ]
         );
+
+        /**
+         * O campo telefone_s é um campo de texto que contém várias telefones separados por "|", os telefones estão em formatos distintos
+         * xx xxxx-xxxx, xx xxxxx-xxxx
+         */
+        $telefonesRaw = (string) Arr::get($data, 'telefones');
+
+        // Se o campo de telefone estiver totalmente vazio, ignora o processo
+        if (blank($telefonesRaw)) {
+            return;
+        }
+
+        // Explode pela barra "|" e limpa espaços das pontas e caracteres invisíveis
+        $telefonesArray = array_map(function ($tel) {
+            // Remove espaços extras nas pontas e normaliza espaços invisíveis de planilha
+            return trim(preg_replace('/\s+/', ' ', $tel));
+        }, explode('|', $telefonesRaw));
+
+        // Remove itens vazios e REINDEXA o array (crucial para o $telefonesArray[0] funcionar)
+        $telefonesArray = array_values(array_unique(array_filter($telefonesArray)));
+
+        $totalTelefones = count($telefonesArray);
+
+        if ($totalTelefones === 0) {
+            return;
+        }
+
+        // Se houver apenas 1 telefone, ele é o WhatsApp. Se houver mais, o 1º é o principal/WhatsApp
+        foreach ($telefonesArray as $index => $telefone) {
+            // Define isWhatsapp como true apenas para o único ou o primeiro telefone do registro
+            $isWhatsapp = ($totalTelefones === 1) || ($index === 0);
+
+            $telefoneLimpo = preg_replace('/[^0-9]/', '', $telefone);
+
+            ClienteTelefones::updateOrCreate(
+                [
+                    'cliente_id' => $cliente->id,
+                    'numero'     => $telefoneLimpo
+                ],
+                [
+                    'isWhatsapp' => $isWhatsapp
+                ]
+            );
+        }
     }
 
     // ─── Produtos ───────────────────────────────────────────────────────
 
     private function importProduto(array $data): void
     {
-        $codigo = Arr::get($data, 'codigo');
-        $descricao = Arr::get($data, 'descricao');
+        $codigo = trim((string) Arr::get($data, 'codigo'));
+        $ean = trim((string) Arr::get($data, 'ean'));
+        $descricao = trim((string) Arr::get($data, 'descricao'));
+        $precoUnitario = 0;
 
-        if (blank($codigo) || blank($descricao)) {
-            throw new \RuntimeException('Missing codigo or descricao');
+        $tipoMarca = trim((string) Arr::get($data, 'tipo_marca'));
+        $codTipoMarca = $tipoMarca; // Inicialmente assume que o código é o mesmo que a descrição
+        if (str_contains($tipoMarca, ' - ')) {
+            [$codTipoMarca, $tipoMarca] = explode(' - ', $tipoMarca, 2);
+            $codTipoMarca = trim($codTipoMarca);
+            $tipoMarca = trim($tipoMarca);
         }
 
-        $tipoMarcaId = $this->resolveFk(TipoMarca::class, 'codigo', Arr::get($data, 'tipo_marca_codigo'));
-        $embalagemId = $this->resolveFk(Embalagem::class, 'codigo', Arr::get($data, 'embalagem_codigo'));
+        $codEmbalagem = trim((string) Arr::get($data, 'embalagem'));
+        $embalagem = trim((string) Arr::get($data, 'embalagem'));
+        if (str_contains($embalagem, ' - ')) {
+            [$codEmbalagem, $embalagem] = explode(' - ', $embalagem, 2);
+            $codEmbalagem = trim($codEmbalagem);
+            $embalagem = trim($embalagem);
+        }
+
+        if (blank($codigo)) {
+            throw new \RuntimeException('Missing codigo');
+        }
+
+        /**
+         * Cadastrar tipo de marca automaticamente caso não exista.
+         */
+        $tipoMarcaId = $this->resolveFk(TipoMarca::class, 'codigo', $codTipoMarca);
+        if (!$tipoMarcaId && !blank($tipoMarca)) {
+            $tipoMarca = TipoMarca::updateOrCreate(
+                ['codigo' => $codTipoMarca ?? $tipoMarca],
+                [
+                    'descricao' => $tipoMarca,
+                ]
+            );
+            $tipoMarcaId = $tipoMarca->id;
+        }
+
+        /**
+         * Cadastrar embalagem automaticamente caso não exista.
+         */
+        $embalagemId = $this->resolveFk(Embalagem::class, 'codigo', $codEmbalagem);
+        if (!$embalagemId && !blank($embalagem)) {
+            $embalagem = Embalagem::updateOrCreate(
+                ['codigo' => $codEmbalagem ?? $embalagem],
+                [
+                    'descricao' => $embalagem,
+                ]
+            );
+            $embalagemId = $embalagem->id;
+        }
 
         Produto::updateOrCreate(
             ['codigo' => $codigo],
             [
+                'ean' => $ean,
                 'descricao' => $descricao,
-                'valor_unitario' => $this->toDecimal(Arr::get($data, 'valor_unitario')),
+                'preco_unitario' => $this->toDecimal($precoUnitario),
                 'tipo_marca_id' => $tipoMarcaId,
                 'embalagem_id' => $embalagemId,
-                'ean' => Arr::get($data, 'ean'),
-                'usuario_responsavel_id' => $this->userId,
             ]
         );
     }
@@ -170,177 +264,156 @@ class GenericImport implements OnEachRow, WithChunkReading, WithHeadingRow, With
 
     private function importMotorista(array $data): void
     {
-        $codigo = Arr::get($data, 'codigo');
-        $nome = Arr::get($data, 'nome');
+        $cpf = trim((string) Arr::get($data, 'cpf'));
+        $codigo = trim((string) Arr::get($data, 'codmotorista'));
+        $nome = trim((string) Arr::get($data, 'nome_motorista'));
+        $cod_cluster = trim((string) Arr::get($data, 'codcluster'));
+        $desc_cluster = trim((string) Arr::get($data, 'cluster'));
+        $cod_filial = trim((string) Arr::get($data, 'codfilial'));
+        $data_admissao = trim((string) Arr::get($data, 'data_admissao'));
+        $data_inativacao = trim((string) Arr::get($data, 'data_inativacao'));
 
         if (blank($codigo) || blank($nome)) {
             throw new \RuntimeException('Missing codigo or nome');
         }
 
-        $filialId = $this->resolveFk(Filial::class, 'codigo', Arr::get($data, 'filial_codigo'));
-        $clusterId = $this->resolveFk(Cluster::class, 'codigo', Arr::get($data, 'cluster_codigo'));
+        /**
+         * Cadastrar cluster automaticamente caso não exista.
+         */
+        $cluster = Cluster::updateOrCreate(
+            ['codigo' => $cod_cluster],
+            [
+                'descricao' => $desc_cluster,
+            ]
+        );
 
-        $payload = [
-            'codigo' => $codigo,
-            'nome' => $nome,
-            'cpf' => Arr::get($data, 'cpf'),
-            'status' => Arr::get($data, 'status', 'ativo') ?: 'ativo',
-            'celular_corporativo' => Arr::get($data, 'celular_corporativo'),
-            'data_admissao' => $this->toDate(Arr::get($data, 'data_admissao')),
-            'filial_id' => $filialId,
-            'cluster_id' => $clusterId,
-            'usuario_responsavel_id' => $this->userId,
-        ];
-
-        Motorista::updateOrCreate(['codigo' => $codigo], $payload);
-
-        // Cria um usuário para o motorista
-        Usuario::updateOrCreate(
-            ['cpf' => Arr::get($data, 'cpf')],
+        /**
+         * Cadastrar um usuário automaticamente para cada motorista.
+         * O usuário será criado com a senha igual ao CPF (deve ser alterada posteriormente).
+         */
+        $usuario = Usuario::updateOrCreate(
+            ['cpf' => $cpf],
             [
                 'nome' => $nome,
-                'senha' => $payload['cpf'],
+                'senha' => $cpf,
                 'role' => 'motorista',
                 'primeiro_acesso' => true,
-                'usuario_responsavel_id' => $this->userId,
+            ]
+        );
+
+        Motorista::updateOrCreate(
+            ['codigo' => $codigo],
+            [
+                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $cod_filial),
+                'cluster_id' => $cluster->id,
+                'usuario_id' => $usuario->id,
+                'status' => Str::lower(Arr::get($data, 'status')),
+                'data_admissao' => $this->toDate($data_admissao),
+                'data_inativacao' => $this->toDate($data_inativacao),
             ]
         );
     }
 
-    // ─── Notas Fiscais ──────────────────────────────────────────────────
+    // ─── Mapas ─────────────────────────────────────────────────────
 
-    private function importNotaFiscal(array $data): void
+    private function importMapa(array $data): void
     {
-        $numero = Arr::get($data, 'numero');
+        $codigo = trim((string) Arr::get($data, 'nro_do_mapa'));
+        $codMotorista = trim((string) Arr::get($data, 'motorista'));
+        $dataEntrega = trim((string) Arr::get($data, 'data_entrega'));
+        $placa = trim((string) Arr::get($data, 'placa'));
+        // Coluna clientes no formato cod/cod/cod...
+        $clientes = trim((string) Arr::get($data, 'clientes'));
+
+        if (blank($codigo)) {
+            throw new \RuntimeException('Missing codigo');
+        }
+
+        // cadastrar clientes do mapa
+        if (!blank($clientes)) {
+            $clientesArray = array_filter(array_map('trim', explode('/', $clientes)));
+            foreach ($clientesArray as $codCliente) {
+                $clienteId = $this->resolveFk(Cliente::class, 'codigo', $codCliente);
+                if ($clienteId) {
+                    ClientesMapa::updateOrCreate(
+                        [
+                            'mapa_id' => $this->resolveFk(Mapa::class, 'codigo', $codigo),
+                            'cliente_id' => $clienteId,
+                        ]
+                    );
+                }
+            }
+        }
+
+        if (!blank($codigo)) {
+            Mapa::updateOrCreate(
+                ['codigo' => $codigo],
+                [
+                    'motorista_id' => $this->resolveFk(Motorista::class, 'codigo', $codMotorista),
+                    'data_entrega' => $this->toDate($dataEntrega),
+                    'placa' => $placa,
+                ]
+            );
+        }
+    }
+
+    // ─── Vendas e Trocas ─────────────────────────────────────────────────────
+
+    private function importVendaTroca(array $data): void
+    {
+        $numero = trim((string) Arr::get($data, 'nota'));
+        $pedido = trim((string) Arr::get($data, 'nr_pedido'));
+        $codCliente = trim((string) Arr::get($data, 'cliente'));
+        $operacao = trim((string) Arr::get($data, 'operacao'));
+        $data_emissao = trim((string) Arr::get($data, 'emissao'));
+
+        $produto = trim((string) Arr::get($data, 'produto'));
+        $quantidade = (int) Arr::get($data, 'qtde');
+        $valorDesconto = $this->toDecimal(Arr::get($data, 'desconto'));
+        $valorAdicional = $this->toDecimal(Arr::get($data, 'adic_finan'));
+        $valorTotal = $this->toDecimal(Arr::get($data, 'total'));
 
         if (blank($numero)) {
             throw new \RuntimeException('Missing numero');
         }
 
-        $clienteId = $this->resolveFk(Cliente::class, 'codigo', Arr::get($data, 'cliente_codigo'));
-
-        // verificar se o mapa já foi cadastrado
-        Mapa::query()->where('codigo', Arr::get($data, 'mapa'))->firstOr(function () use ($data) {
-            $mapaCodigo = Arr::get($data, 'mapa');
-
-            if (blank($mapaCodigo)) {
-                throw new \RuntimeException('Missing mapa');
-            } else {
-
-                // consultar o motorista para associar ao mapa
-                $motoristaId = $this->resolveFk(Motorista::class, 'codigo', Arr::get($data, 'motorista_codigo'));
-
-                if (!$motoristaId) {
-                    throw new \RuntimeException("Motorista with codigo '{$data['motorista_codigo']}' not found for mapa association");
-                }
-
-                // cadastrar mapa
-                Mapa::updateOrCreate(
-                    ['codigo' => $mapaCodigo],
-                    [
-                        'status' => 'ativo',
-                        'motorista_id' => $motoristaId,
-                        'usuario_responsavel_id' => $this->userId,
-                    ]
-                );
-
-                // consultar o cliente atual e vinculá-lo ao mapa
-                $clienteCodigo = Arr::get($data, 'cliente_codigo');
-                if (blank($clienteCodigo)) {
-                    throw new \RuntimeException('Missing cliente_codigo for mapa association');
-                } else {
-                    $clienteId = $this->resolveFk(Cliente::class, 'codigo', $clienteCodigo);
-                    if (!$clienteId) {
-                        throw new \RuntimeException("Cliente with codigo '{$clienteCodigo}' not found for mapa association");
-                    }
-
-                    $mapa = Mapa::query()->where('codigo', $mapaCodigo)->first();
-                    if (!$mapa) {
-                        throw new \RuntimeException("Mapa with codigo '{$mapaCodigo}' not found after creation");
-                    }
-
-                    $clienteVinculado = ClientesMapa::query()
-                        ->where('cliente_id', $clienteId)
-                        ->where('mapa_id', $mapa->id)
-                        ->first();
-
-                    if (!$clienteVinculado) {
-                        ClientesMapa::create([
-                            'cliente_id' => $clienteId,
-                            'mapa_id' => $mapa->id,
-                            'usuario_responsavel_id' => $this->userId,
-                        ]);
-                    } else {
-                        throw new \RuntimeException("Cliente with codigo '{$clienteCodigo}' is already linked to Mapa '{$mapaCodigo}'");
-                    }
-                }
-            }
-        });
-
+        /**
+         * Cadastrar notas fiscais
+         */
         NotaFiscal::updateOrCreate(
             ['numero' => $numero],
             [
-                'pedido' => Arr::get($data, 'pedido'),
-                'mapa' =>  Arr::get($data, 'mapa'),
-                'cliente_id' => $clienteId,
-                'data_operacao' => $this->toDate(Arr::get($data, 'data_operacao')),
-                'data_emissao' => $this->toDate(Arr::get($data, 'data_emissao')),
-                'valor_bruto' => $this->toDecimal(Arr::get($data, 'valor_bruto')) ?? 0,
-                'total_desconto' => $this->toDecimal(Arr::get($data, 'total_desconto')) ?? 0,
-                'valor_total' => $this->toDecimal(Arr::get($data, 'valor_total')) ?? 0,
-                'status' => Arr::get($data, 'status', 'ativa') ?: 'ativa',
-                'usuario_responsavel_id' => $this->userId,
+                'pedido' => $pedido,
+                'cliente_id' => $this->resolveFk(Cliente::class, 'codigo', $codCliente),
+                'operacao' => $operacao,
+                'data_emissao' => $this->toDate($data_emissao),
             ]
         );
-    }
 
-    // ─── Produtos da NF ─────────────────────────────────────────────────
-
-    private function importProdutoNf(array $data): void
-    {
-        $nfNumero = Arr::get($data, 'nf_numero');
-        $produtoCodigo = Arr::get($data, 'produto_codigo');
-
-        if (blank($nfNumero) || blank($produtoCodigo)) {
-            throw new \RuntimeException('Missing nf_numero or produto_codigo');
-        }
-
-        $nf = NotaFiscal::query()->where('numero', $nfNumero)->first();
-        if (!$nf) {
-            throw new \RuntimeException("Nota fiscal '{$nfNumero}' não encontrada");
-        }
-
-        $produto = Produto::query()->where('codigo', $produtoCodigo)->first();
-        if (!$produto) {
-            throw new \RuntimeException("Produto '{$produtoCodigo}' não encontrado");
-        }
-
+        /**
+         * Como cada nota fiscal pode ter vários produtos, cadastramos cada produto da nota fiscal na tabela produtos_nota_fiscal
+         * Cada linha da tabela possui o código da nota fiscal, o código do produto e seus detalhes,
+         * como quantidade, valor de desconto, valor adicional e valor total.
+         */
         ProdutoNotaFiscal::updateOrCreate(
             [
-                'nota_fiscal_id' => $nf->id,
-                'produto_id' => $produto->id,
+                'nota_fiscal_id' => $this->resolveFk(NotaFiscal::class, 'numero', $numero),
+                'produto_id' => $this->resolveFk(Produto::class, 'codigo', $produto),
             ],
             [
-                'quantidade' => $this->toInt(Arr::get($data, 'quantidade')) ?? 0,
-                'usuario_responsavel_id' => $this->userId,
+                'quantidade' => $quantidade,
+                'valor_desconto' => $valorDesconto,
+                'valor_adicional' => $valorAdicional,
+                'valor_total' => $valorTotal,
             ]
         );
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────
 
-    private function getRowIdentifier(array $data): string
-    {
-        return (string) (
-            Arr::get($data, 'codigo')
-            ?? Arr::get($data, 'nf_numero')
-            ?? 'row'
-        );
-    }
-
     /**
-     * Resolve a foreign key by looking up a related model by a unique column value.
-     * Returns the model's id or null if the value is blank or not found.
+     * Busca o relacionamento no banco. Possui cache interno para evitar
+     * que a mesma query seja repetida mil vezes.
      */
     private function resolveFk(string $modelClass, string $column, mixed $value): ?string
     {
@@ -348,66 +421,63 @@ class GenericImport implements OnEachRow, WithChunkReading, WithHeadingRow, With
             return null;
         }
 
-        $record = $modelClass::query()->where($column, $value)->first();
+        $cacheKey = $modelClass . '_' . $column;
 
-        return $record?->id;
-    }
-
-    private function toBool(mixed $value, bool $default = false): bool
-    {
-        if (blank($value)) {
-            return $default;
+        // Se o valor já foi buscado no banco antes, retorna do cache em memória
+        if (isset($this->fkCache[$cacheKey][$value])) {
+            return $this->fkCache[$cacheKey][$value];
         }
 
-        $v = strtolower(trim((string) $value));
+        $record = $modelClass::query()->where($column, $value)->first();
 
-        return in_array($v, ['s', 'sim', 'yes', 'y', '1', 'true'], true);
+        // Salva o resultado no cache (mesmo se for null, para não ficar re-buscando registro inexistente)
+        $this->fkCache[$cacheKey][$value] = $record?->id;
+
+        return $this->fkCache[$cacheKey][$value];
+    }
+
+    private function updateProgress(): void
+    {
+        $percentage = $this->totalRows > 0 ? (int) floor(($this->processedRows / $this->totalRows) * 100) : 0;
+        $percentage = min($percentage, 100); // Impede que passe de 100%
+
+        $batch = ImportBatch::query()->find($this->batchId);
+
+        if ($batch) {
+            $batch->update([
+                'processed_rows' => $this->processedRows,
+                'percentage' => $percentage,
+                'last_log' => "Importing rows in progress",
+                'current_step' => 'processing',
+            ]);
+
+            event(new ImportProgressUpdated($batch));
+        }
     }
 
     private function toDecimal(mixed $value): ?float
     {
-        if (blank($value)) {
-            return null;
-        }
-
+        if (blank($value)) return null;
         $v = str_replace(',', '.', trim((string) $value));
-
         return is_numeric($v) ? (float) $v : null;
-    }
-
-    private function toInt(mixed $value): ?int
-    {
-        if (blank($value)) {
-            return null;
-        }
-
-        $v = trim((string) $value);
-
-        return is_numeric($v) ? (int) $v : null;
     }
 
     private function toDate(mixed $value): ?string
     {
-        if (blank($value)) {
-            return null;
-        }
-
+        if (blank($value)) return null;
         $v = trim((string) $value);
 
-        // Excel serial date number
         if (is_numeric($v) && (float) $v > 10000) {
             $timestamp = ((float) $v - 25569) * 86400;
             return date('Y-m-d', (int) $timestamp);
         }
 
-        // Try parsing common formats
         foreach (['Y-m-d', 'd/m/Y', 'm/d/Y', 'd-m-Y'] as $fmt) {
             $dt = \DateTime::createFromFormat($fmt, $v);
             if ($dt !== false) {
                 return $dt->format('Y-m-d');
             }
         }
-
         return $v;
     }
 
@@ -426,60 +496,5 @@ class GenericImport implements OnEachRow, WithChunkReading, WithHeadingRow, With
         return [
             'delimiter' => ';',
         ];
-    }
-
-    private function resolveModel(): string
-    {
-        return match ($this->type) {
-            'filiais' => Filial::class,
-            'tipos_pessoa' => TipoPessoa::class,
-            'tipos_marca' => TipoMarca::class,
-            'embalagens' => Embalagem::class,
-            'clusters' => Cluster::class,
-            'categorias' => Categoria::class,
-            default => Filial::class,
-        };
-    }
-
-    private function normalizeKeys(array $data): array
-    {
-        $normalized = [];
-
-        foreach ($data as $key => $value) {
-            $cleanKey = ltrim((string) $key, "\xEF\xBB\xBF");
-            $cleanKey = Str::slug(trim($cleanKey), '_');
-            $normalized[$cleanKey] = $value;
-        }
-
-        return $normalized;
-    }
-
-    private function updateProgress(int $rowIndex, string $log): void
-    {
-        if ($this->processedRows % $this->updateEvery !== 0 && $this->processedRows !== $this->totalRows) {
-            return;
-        }
-
-        $percentage = 0;
-        if ($this->totalRows > 0) {
-            $percentage = (int) floor(($this->processedRows / $this->totalRows) * 100);
-            if ($percentage > 100) {
-                $percentage = 100;
-            }
-        }
-
-        ImportBatch::query()
-            ->where('id', $this->batchId)
-            ->update([
-                'processed_rows' => $this->processedRows,
-                'percentage' => $percentage,
-                'last_log' => $log,
-                'current_step' => 'row ' . $rowIndex,
-            ]);
-
-        $batch = ImportBatch::query()->find($this->batchId);
-        if ($batch) {
-            event(new ImportProgressUpdated($batch));
-        }
     }
 }

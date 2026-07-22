@@ -13,6 +13,8 @@ return new class extends Migration
       $table->string('numero')->unique();
       $table->string('pedido')->nullable();
       $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
+      $table->date('data_emissao')->nullable();
+      $table->string('operacao')->nullable();
       $table->timestamps();
     });
   }

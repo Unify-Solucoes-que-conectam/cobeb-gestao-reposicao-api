@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             UsuariosSeeder::class,
             MenuSeeder::class,
             TiposAvariaSeeder::class,
+            FiliaisSeeder::class,
         ]);
     }
 }
