@@ -18,15 +18,9 @@ class AnexosAvaria extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'path',
         'avaria_id',
-        'usuario_responsavel_id',
+        'path',
     ];
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
-    }
 
     public function avaria()
     {

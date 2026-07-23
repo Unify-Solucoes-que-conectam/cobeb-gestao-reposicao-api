@@ -5,7 +5,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class NotaFiscalResource extends JsonResource
+class ClienteTelefoneResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -16,11 +16,8 @@ class NotaFiscalResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'numero' => $this->numero,
-            'pedido' => $this->pedido,
-            'operacao' => $this->operacao,
-            'data_emissao' => $this->data_emissao,
-            'produtos' => ProdutosNotaFiscalResource::collection($this->whenLoaded('produtos')),
+            'telefone' => $this->numero,
+            'isWhatsapp' => (bool) $this->isWhatsapp,
         ];
     }
 }

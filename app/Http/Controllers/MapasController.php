@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\AvariaResource;
+use App\Http\Resources\ClienteResource;
 use App\Http\Resources\MapaResource;
+use App\Models\Avaria;
+use App\Models\ClientesMapa;
 use App\Models\Mapa;
 use Illuminate\Http\Request;
 
@@ -18,8 +22,8 @@ class MapasController extends Controller
             }
 
             $mapas = $query->with([
-                'notas_fiscais',
                 'clientes.cliente',
+                'motorista',
                 'motorista.filial',
                 'motorista.cluster'
             ]);
@@ -57,6 +61,70 @@ class MapasController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao processar mapa.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function clientes(Request $request, string $mapaId)
+    {
+        try {
+            $query = ClientesMapa::query();
+
+            // Filtra o mapa pelo ID fornecido
+            $query->where('mapa_id', $mapaId);
+
+            $clientesMapa = ClientesMapa::where('mapa_id', $mapaId)
+                ->with([
+                    // Usamos um array no 'cliente' para injetar o withCount e carregar as outras relações
+                    'cliente' => function ($query) {
+                        $query->withCount('notasFiscais') // Traz o número de notas sem carregar todos os registros
+                            ->with(['filial', 'categoria', 'contatos']);
+                    }
+                ])
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Clientes vinculados ao mapa carregados com sucesso.',
+                'data'    => ClienteResource::collection($clientesMapa->pluck('cliente'))
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar clientes vinculados ao mapa.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function avarias(Request $request, string $mapaId)
+    {
+        try {
+            // 1. Encontra todos os IDs de clientes associados ao mapa fornecido
+            $clienteIds = ClientesMapa::where('mapa_id', $mapaId)->pluck('cliente_id');
+
+            // 2. Filtra as avarias onde o cliente_id está dentro da lista de clientes do mapa
+            $query = Avaria::query()->whereIn('cliente_id', $clienteIds);
+
+            // 3. Carrega os relacionamentos (mantendo a sua lógica original)
+            $avariasMapa = $query->with([
+                'itens',
+                'itens.produtoNotaFiscal' => function ($query) {
+                    $query->withCount('produtos') // Traz a quantidade de produtos
+                        ->with(['filial', 'categoria', 'contatos']);
+                }
+            ])->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Avarias vinculadas ao mapa carregadas com sucesso.',
+                'data'    => AvariaResource::collection($avariasMapa)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar avarias vinculadas ao mapa.',
                 'error'   => $e->getMessage()
             ], 500);
         }

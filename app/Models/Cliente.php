@@ -53,4 +53,9 @@ class Cliente extends Model
     {
         return $this->hasMany(NotaFiscal::class, 'cliente_id');
     }
+
+    public function contatos()
+    {
+        return $this->hasMany(ClienteTelefones::class, 'cliente_id');
+    }
 }

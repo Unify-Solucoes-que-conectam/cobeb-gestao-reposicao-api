@@ -14,6 +14,12 @@ class NotasFiscaisController extends Controller
 
         // consultar dados das notas fiscais e filtrar por número fornecido no parâmetro 'search' da requisição
         $query = NotaFiscal::query();
+        $relations = [
+            'produtos',
+            'produtos.produto',
+            'produtos.produto.tipoMarca',
+            'produtos.produto.embalagem',
+        ];
 
         if ($request->filled('search')) {
             $search = $request->input('search');
@@ -22,19 +28,21 @@ class NotasFiscaisController extends Controller
             });
         }
 
-        // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
-        if ($request->boolean('detalhar')) {
-            $query->with([
-                'produtos',
-                'cliente',
-            ]);
+        // consulta notas de um cliente específico se o parâmetro 'cliente_id' for fornecido na requisição
+        if ($request->filled('cliente_id')) {
+            $clienteId = $request->input('cliente_id');
+            $query->where('cliente_id', $clienteId);
+
+            $relations[] = 'cliente';
         }
+
+        $notasFiscais = $query->get()->load($relations);
 
         try {
             return response()->json([
                 'success' => true,
                 'message' => 'Consulta de notas fiscais realizada com sucesso.',
-                'data' => NotaFiscalResource::collection($query->get())
+                'data' => NotaFiscalResource::collection($notasFiscais)
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -50,24 +58,21 @@ class NotasFiscaisController extends Controller
         // consultar dados da nota fiscal
         $query = NotaFiscal::query()->where('numero', $numero);
 
-        // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
-        if ($request->filled('detalhar') && $request->boolean('detalhar') === true) {
-            $query->with([
-                'produtos',
-                'produtos.produto',
-                'cliente',
-            ]);
-        }
-
         try {
 
-            $notaFiscal = NotaFiscalResource::collection($query->get())->first();
+            $notaFiscal = $query->with([
+                'cliente',
+                'produtos',
+                'produtos.produto',
+                'produtos.produto.tipoMarca',
+                'produtos.produto.embalagem',
+            ])->first();
 
-            if (!$notaFiscal) {
+            if (!$notaFiscal || !$notaFiscal->resource) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Nota fiscal não encontrada.',
-                    'data' => []
+                    'data' => NotaFiscalResource::make($notaFiscal)
                 ], 404);
             } else {
                 return response()->json([

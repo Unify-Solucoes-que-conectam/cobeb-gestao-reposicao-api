@@ -2,12 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreAvariaRequest;
 use App\Http\Resources\AvariaResource;
 use App\Models\AnexosAvaria;
 use App\Models\Avaria;
-use App\Models\NotasFiscaisAvaria;
-use App\Models\ProdutosAvaria;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Support\WhatsAppService;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class AvariasController extends Controller
 {
@@ -25,11 +23,6 @@ class AvariasController extends Controller
 
             if ($request->has('search')) {
 
-                // consultar pelo código do mapa
-                $query->whereHas('mapa', function ($q) use ($request) {
-                    $q->where('codigo', 'like', '%' . $request->search . '%');
-                });
-
                 // consultar pelo nome ou código do cliente
                 $query->orWhereHas('cliente', function ($q) use ($request) {
                     $q->where('nome_fantasia', 'like', '%' . $request->search . '%')->orWhere('codigo', 'like', '%' . $request->search . '%');
@@ -37,22 +30,14 @@ class AvariasController extends Controller
             }
 
             $avarias = $query->with([
-                'anexos',
                 'cliente',
-                'mapa',
-                'mapa.motorista.filial',
-                'mapa.motorista.cluster',
-                'notasFiscais.nota_fiscal',
-                'notasFiscais.avaria.produtos',
-                'notasFiscais.nota_fiscal.produtos.produto',
-                'notasFiscais.nota_fiscal.produtos.produto.tipoMarca',
-                'notasFiscais.nota_fiscal.produtos.produto.embalagem',
+                'aprovador',
+                'anexos',
+                'itens',
+                'itens.produtoNotaFiscal',
+                'itens.produtoNotaFiscal.produto',
+                'itens.tipoAvaria',
             ])->get();
-
-            // filtra avarias pelo clienteId
-            if ($request->has('clienteId')) {
-                $avarias = $avarias->where('cliente_id', $request->clienteId);
-            }
 
             return response()->json([
                 'success' => true,
@@ -68,47 +53,44 @@ class AvariasController extends Controller
         }
     }
 
-    public function store(StoreAvariaRequest $request)
+    public function store(Request $request)
     {
         try {
             // Inicia a transação
             $avaria = DB::transaction(function () use ($request) {
 
-                // Pegando o ID do usuário autenticado para preencher o 'usuario_responsavel_id'
-                $usuarioId = $request->user()->id;
+                $validator = Validator::make($request->all(), Avaria::createRules(), Avaria::messages());
 
-                // 1. Cria a Avaria principal
+                if ($validator->fails()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Erro de validação.',
+                        'errors' => $validator->errors()
+                    ], 422);
+                }
+
+                // Cria a Avaria principal
                 $avaria = Avaria::create([
-                    'cliente_id' => $request->cliente_id,
-                    'mapa_id' => $request->mapa_id,
-                    'usuario_responsavel_id' => $usuarioId,
+                    ...$validator->validated(),
+                    'status' => 'pendente',
+                    'data_emissao' => now(),
                 ]);
 
-                // 2. Associa as Notas Fiscais (se existirem)
-                if ($request->has('notas_fiscais')) {
-                    foreach ($request->notas_fiscais as $notaFiscalId) {
-                        NotasFiscaisAvaria::create([
-                            'avaria_id' => $avaria->id,
-                            'nota_fiscal_id' => $notaFiscalId,
-                            'usuario_responsavel_id' => $usuarioId,
-                        ]);
-                    }
-                }
+                $produtos = $request->input('produtos');
 
-                // 3. Associa os Produtos
-                if ($request->has('produtos')) {
-                    foreach ($request->produtos as $produto) {
-                        ProdutosAvaria::create([
-                            'avaria_id' => $avaria->id,
-                            'produto_id' => $produto['produto_id'],
-                            'tipo_avaria_id' => $produto['tipo_avaria_id'],
-                            'quantidade' => $produto['quantidade'],
-                            'usuario_responsavel_id' => $usuarioId,
-                        ]);
-                    }
-                }
+                // Mapeia os campos da requisição para as colunas do banco
+                $itensData = array_map(function ($produto) {
+                    return [
+                        'produto_nota_fiscal_id' => $produto['produto_id'],
+                        'tipo_avaria_id'         => $produto['tipo_avaria_id'],
+                        'quantidade_avariada'    => $produto['quantidade'],
+                    ];
+                }, $produtos);
 
-                // 4. Salva os Anexos
+                // O Laravel já atribui o 'avaria_id' automaticamente para todos
+                $avaria->itens()->createMany($itensData);
+
+                // Salva os Anexos
                 if ($request->has('anexos')) {
                     foreach ($request->anexos as $anexo) {
 
@@ -153,7 +135,6 @@ class AvariasController extends Controller
                         AnexosAvaria::create([
                             'avaria_id' => $avaria->id,
                             'path' => $caminhoAnexo,
-                            'usuario_responsavel_id' => $usuarioId,
                         ]);
                     }
                 }
@@ -161,13 +142,13 @@ class AvariasController extends Controller
                 return $avaria;
             });
 
-            // Carrega os relacionamentos para retornar na resposta
-            $avaria->load(['notasFiscais', 'produtos', 'anexos']);
+            if ($avaria instanceof JsonResponse) {
+                return $avaria; // Retorna o erro de validação se houver
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Avaria registrada com sucesso.',
-                'data' => $avaria
             ], 201);
         } catch (\Exception $e) {
             Log::error('Erro ao registrar avaria: ' . $e->getMessage());
@@ -192,7 +173,7 @@ class AvariasController extends Controller
 
         try {
             // 1. Descobre os IDs de todas as notas fiscais vinculadas a esta avaria
-            $notasFiscaisIds = \App\Models\NotasFiscaisAvaria::where('avaria_id', $avariaId)
+            $notasFiscaisIds = NotasFiscaisAvaria::where('avaria_id', $avariaId)
                 ->pluck('nota_fiscal_id');
 
             // 2. Busca o registro do produto cruzando com as notas fiscais encontradas

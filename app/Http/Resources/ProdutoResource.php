@@ -23,8 +23,6 @@ class ProdutoResource extends JsonResource
             'marca' => new TipoMarcaResource($this->whenLoaded('tipoMarca')),
             'embalagem' => new EmbalagemResource($this->whenLoaded('embalagem')),
             'ean' => $this->ean,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
         ];
     }
 }

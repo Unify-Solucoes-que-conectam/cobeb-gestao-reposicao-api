@@ -80,7 +80,7 @@ class AuthController extends Controller
 
             $notification = [
                 'id' => $notificationId,
-                'titulo' => 'Bem-vindo ao Cobeb!',
+                'titulo' => 'Bem-vindo ao sistema de gestão de reposição, ' . ucwords(strtolower($user->nome)) . '!',
                 'mensagem' => 'Você está logado no sistema de monitoramento.',
                 'tipo' => 'info',
             ];
@@ -103,7 +103,7 @@ class AuthController extends Controller
             'message' => 'Login realizado com sucesso.',
             'data' => [
                 'token' => $token,
-                'usuario' => UsuarioResource::make($user->load('motorista', 'motorista.mapaAtual')),
+                'usuario' => UsuarioResource::make($user->load('motorista', 'motorista.mapaAtual', 'motorista.filial')),
                 'menus' => MenuResource::collection($menus),
             ],
         ]);

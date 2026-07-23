@@ -315,45 +315,47 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
     }
 
     // ─── Mapas ─────────────────────────────────────────────────────
-
     private function importMapa(array $data): void
     {
         $codigo = trim((string) Arr::get($data, 'nro_do_mapa'));
         $codMotorista = trim((string) Arr::get($data, 'motorista'));
         $dataEntrega = trim((string) Arr::get($data, 'data_entrega'));
         $placa = trim((string) Arr::get($data, 'placa'));
-        // Coluna clientes no formato cod/cod/cod...
         $clientes = trim((string) Arr::get($data, 'clientes'));
 
         if (blank($codigo)) {
-            throw new \RuntimeException('Missing codigo');
+            throw new \RuntimeException('Missing codigo (nro_do_mapa)');
         }
 
-        // cadastrar clientes do mapa
+        // 1. Guarda a instância do Mapa criado/atualizado
+        $mapa = Mapa::updateOrCreate(
+            ['codigo' => $codigo],
+            [
+                'motorista_id' => $this->resolveFk(Motorista::class, 'codigo', $codMotorista),
+                'data_entrega' => $this->toDate($dataEntrega),
+                'placa'        => $placa,
+            ]
+        );
+
+        // 2. Cadastrar clientes do mapa
         if (!blank($clientes)) {
-            $clientesArray = array_filter(array_map('trim', explode('/', $clientes)));
+            // 'strlen' garante que só remova elementos vazios
+            $clientesArray = array_filter(array_map('trim', explode('/', $clientes)), 'strlen');
+
             foreach ($clientesArray as $codCliente) {
-                $clienteId = $this->resolveFk(Cliente::class, 'codigo', $codCliente);
+                // Tenta resolver a FK do cliente
+                $clienteId = $this->resolveFk(Cliente::class, 'codigo', ltrim($codCliente, '0'));
+
                 if ($clienteId) {
-                    ClientesMapa::updateOrCreate(
-                        [
-                            'mapa_id' => $this->resolveFk(Mapa::class, 'codigo', $codigo),
-                            'cliente_id' => $clienteId,
-                        ]
-                    );
+                    ClientesMapa::updateOrCreate([
+                        'mapa_id'    => $mapa->id, // Usando o ID direto do mapa recém criado
+                        'cliente_id' => $clienteId,
+                    ]);
+                } else {
+                    // Log para você saber exatamente qual cliente não foi encontrado no banco
+                    Log::warning("[ImportMapa] Cliente '{$codCliente}' não encontrado no banco para o Mapa '{$codigo}'.");
                 }
             }
-        }
-
-        if (!blank($codigo)) {
-            Mapa::updateOrCreate(
-                ['codigo' => $codigo],
-                [
-                    'motorista_id' => $this->resolveFk(Motorista::class, 'codigo', $codMotorista),
-                    'data_entrega' => $this->toDate($dataEntrega),
-                    'placa' => $placa,
-                ]
-            );
         }
     }
 

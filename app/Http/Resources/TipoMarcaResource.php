@@ -16,6 +16,8 @@ class TipoMarcaResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'codigo' => $this->codigo,
+            'descricao' => $this->descricao,
         ];
     }
 }

@@ -12,7 +12,6 @@ class ProdutosNotaFiscalResource extends JsonResource
 
         if (!$this->relationLoaded('produto')) {
             return [
-                'id' => $this->id,
                 'quantidade' => $this->quantidade,
             ];
         }
@@ -21,7 +20,10 @@ class ProdutosNotaFiscalResource extends JsonResource
 
         // Mescla a quantidade (e o ID da tabela produtos_nota_fiscal) dentro do array do produto
         return array_merge($produtoData, [
+            'id' => $this->id,
             'quantidade' => $this->quantidade,
+            'quantidade_avariada' => $this->quantidade_avariada,
+            'valor_total' => $this->valor_total,
         ]);
     }
 }
