@@ -18,7 +18,7 @@ class AvariaResource extends JsonResource
             'data_aprovacao' => $this->data_aprovacao,
             'motivo_reprovacao' => $this->motivo_reprovacao,
             'itens' => ItemAvariaResource::collection($this->whenLoaded('itens')),
-            'anexos' => AnexosAvariaResource::collection($this->whenLoaded('anexos')),
+            'anexos' => $this->whenLoaded('anexos') ? AnexosAvariaResource::collection($this->anexos) : [],
         ];
     }
 }

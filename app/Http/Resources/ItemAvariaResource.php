@@ -14,6 +14,11 @@ class ItemAvariaResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        return parent::toArray($request);
+        return [
+            'id' => $this->id,
+            'produto' => new ProdutosNotaFiscalResource($this->whenLoaded('produto')),
+            'quantidade_avariada' => $this->quantidade_avariada,
+            'tipo_avaria' => new TipoAvariaResource($this->whenLoaded('tipoAvaria')),
+        ];
     }
 }

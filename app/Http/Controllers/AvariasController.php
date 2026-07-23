@@ -164,49 +164,49 @@ class AvariasController extends Controller
     /**
      * Atualiza a quantidade de um produto específico em uma avaria (via Nota Fiscal).
      */
-    public function updateQuantidadeProduto(Request $request, string $avariaId, string $produtoId)
-    {
-        // Valida se a nova quantidade foi enviada e é um número válido
-        $request->validate([
-            'quantidade' => 'required|integer|min:1',
-        ]);
+    // public function updateQuantidadeProduto(Request $request, string $avariaId, string $produtoId)
+    // {
+    //     // Valida se a nova quantidade foi enviada e é um número válido
+    //     $request->validate([
+    //         'quantidade' => 'required|integer|min:1',
+    //     ]);
 
-        try {
-            // 1. Descobre os IDs de todas as notas fiscais vinculadas a esta avaria
-            $notasFiscaisIds = NotasFiscaisAvaria::where('avaria_id', $avariaId)
-                ->pluck('nota_fiscal_id');
+    //     try {
+    //         // 1. Descobre os IDs de todas as notas fiscais vinculadas a esta avaria
+    //         $notasFiscaisIds = NotasFiscaisAvaria::where('avaria_id', $avariaId)
+    //             ->pluck('nota_fiscal_id');
 
-            // 2. Busca o registro do produto cruzando com as notas fiscais encontradas
-            $produtoNota = \App\Models\ProdutoNotaFiscal::whereIn('nota_fiscal_id', $notasFiscaisIds)
-                ->where('produto_id', $produtoId)
-                ->firstOrFail();
+    //         // 2. Busca o registro do produto cruzando com as notas fiscais encontradas
+    //         $produtoNota = \App\Models\ProdutoNotaFiscal::whereIn('nota_fiscal_id', $notasFiscaisIds)
+    //             ->where('produto_id', $produtoId)
+    //             ->firstOrFail();
 
-            // 3. Atualiza a quantidade correta na tabela produtos_nota_fiscal
-            $produtoNota->update([
-                'quantidade' => $request->quantidade,
-                'usuario_responsavel_id' => $request->user()->id // Opcional, para rastrear quem editou
-            ]);
+    //         // 3. Atualiza a quantidade correta na tabela produtos_nota_fiscal
+    //         $produtoNota->update([
+    //             'quantidade' => $request->quantidade,
+    //             'usuario_responsavel_id' => $request->user()->id // Opcional, para rastrear quem editou
+    //         ]);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Quantidade atualizada com sucesso.',
-                'data' => $produtoNota
-            ], 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Produto não encontrado nas notas fiscais desta avaria.'
-            ], 404);
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Erro ao atualizar quantidade do produto na avaria: ' . $e->getMessage());
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Quantidade atualizada com sucesso.',
+    //             'data' => $produtoNota
+    //         ], 200);
+    //     } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Produto não encontrado nas notas fiscais desta avaria.'
+    //         ], 404);
+    //     } catch (\Exception $e) {
+    //         \Illuminate\Support\Facades\Log::error('Erro ao atualizar quantidade do produto na avaria: ' . $e->getMessage());
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Ocorreu um erro ao atualizar a quantidade.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Ocorreu um erro ao atualizar a quantidade.',
+    //             'error' => $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
 
     /**
      * Aprova ou reprova uma avaria.

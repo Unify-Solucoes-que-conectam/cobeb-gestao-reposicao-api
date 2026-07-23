@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\AvariaResource;
 use App\Http\Resources\ClienteResource;
 use App\Http\Resources\NotaFiscalResource;
 use App\Models\Avaria;
@@ -137,6 +138,46 @@ class ClientesController extends Controller
                 'success' => false,
                 'message' => 'Erro ao encontrar notas fiscais vinculadas.',
                 'error'   => $e->getMessage() // Adicionado para facilitar o debug
+            ], 500);
+        }
+    }
+
+    public function avarias(Request $request, $id)
+    {
+        try {
+            $query = Avaria::query();
+
+            // filtrar pelo cliente específico
+            $query->where('cliente_id', $id);
+
+            // filtrar por status do item, se fornecido na query string
+            if ($request->has('tipo_avaria_id')) {
+                $tipoAvariaId = $request->input('tipo_avaria_id');
+                $query->whereHas('itens', function ($q) use ($tipoAvariaId) {
+                    $q->where('tipo_avaria_id', $tipoAvariaId);
+                });
+            }
+
+            $avarias = $query->with([
+                'cliente',
+                'aprovador',
+                'anexos',
+                'itens',
+                'itens.produtoNotaFiscal',
+                'itens.produtoNotaFiscal.produto',
+                'itens.tipoAvaria',
+            ])->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Avarias vinculadas encontradas com sucesso.',
+                'data' => AvariaResource::collection($avarias)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao encontrar avarias vinculadas.',
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
