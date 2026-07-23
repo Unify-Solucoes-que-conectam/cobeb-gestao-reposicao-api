@@ -142,6 +142,12 @@ class ClientesController extends Controller
         }
     }
 
+    /**
+
+     * Retorna todas as avarias vinculadas a um cliente específico, separando-as por nota fiscal
+
+     */
+
     public function avarias(Request $request, $id)
     {
         try {
@@ -163,7 +169,7 @@ class ClientesController extends Controller
                 'aprovador',
                 'anexos',
                 'itens',
-                'itens.produtoNotaFiscal',
+                'itens.produtoNotaFiscal.notaFiscal',
                 'itens.produtoNotaFiscal.produto',
                 'itens.tipoAvaria',
             ])->get();
@@ -174,6 +180,7 @@ class ClientesController extends Controller
                 'data' => AvariaResource::collection($avarias)
             ]);
         } catch (\Exception $e) {
+
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao encontrar avarias vinculadas.',

@@ -31,11 +31,16 @@ class AvariasController extends Controller
 
             $avarias = $query->with([
                 'cliente',
+                'motorista',
+                'motorista.mapaAtual',
+                'motorista.cluster',
+                'motorista.filial',
                 'aprovador',
                 'anexos',
                 'itens',
                 'itens.produtoNotaFiscal',
                 'itens.produtoNotaFiscal.produto',
+                'itens.produtoNotaFiscal.notaFiscal',
                 'itens.tipoAvaria',
             ])->get();
 
@@ -55,100 +60,131 @@ class AvariasController extends Controller
 
     public function store(Request $request)
     {
+        // 1. Validação fora da transação para economizar recursos de banco
+        $validator = Validator::make($request->all(), Avaria::createRules(), Avaria::messages());
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro de validação.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
             // Inicia a transação
-            $avaria = DB::transaction(function () use ($request) {
+            $resultado = DB::transaction(function () use ($request, $validator) {
 
-                $validator = Validator::make($request->all(), Avaria::createRules(), Avaria::messages());
+                $validated = $validator->validated();
+                $produtosInput = $request->input('produtos');
 
-                if ($validator->fails()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Erro de validação.',
-                        'errors' => $validator->errors()
-                    ], 422);
-                }
-
-                // Cria a Avaria principal
-                $avaria = Avaria::create([
-                    ...$validator->validated(),
-                    'status' => 'pendente',
-                    'data_emissao' => now(),
-                ]);
-
-                $produtos = $request->input('produtos');
-
-                // Mapeia os campos da requisição para as colunas do banco
-                $itensData = array_map(function ($produto) {
-                    return [
-                        'produto_nota_fiscal_id' => $produto['produto_id'],
-                        'tipo_avaria_id'         => $produto['tipo_avaria_id'],
-                        'quantidade_avariada'    => $produto['quantidade'],
-                    ];
-                }, $produtos);
-
-                // O Laravel já atribui o 'avaria_id' automaticamente para todos
-                $avaria->itens()->createMany($itensData);
-
-                // Salva os Anexos
-                if ($request->has('anexos')) {
-                    foreach ($request->anexos as $anexo) {
-
-                        // Pega o nome do frontend, ou usa um genérico se falhar
-                        $nomeOriginal = $anexo['nome'] ?? 'anexo_sem_nome.jpg';
-                        $base64Anexo = $anexo['base64'];
-
-                        // 1. Descobre a extensão real baseada no cabeçalho base64 do frontend
-                        $extensaoReal = 'jpg'; // fallback
-                        if (preg_match('/^data:image\/([a-zA-Z0-9]+);base64,/', $base64Anexo, $type)) {
-                            $extensaoReal = strtolower($type[1]);
-                        } else {
-                            // Se não tiver cabeçalho, tenta extrair a extensão do nome original
-                            $extensaoReal = pathinfo($nomeOriginal, PATHINFO_EXTENSION) ?: 'jpg';
-                        }
-
-                        // 2. Remove a parte "data:image/png;base64," do começo da string
-                        if (strpos($base64Anexo, ',') !== false) {
-                            $base64Anexo = explode(',', $base64Anexo)[1];
-                        }
-
-                        // 3. Corrige possíveis espaços em branco que quebram o base64 e decodifica
-                        $base64Anexo = str_replace(' ', '+', $base64Anexo);
-                        $anexoDecodificado = base64_decode($base64Anexo);
-
-                        if ($anexoDecodificado === false) {
-                            continue; // Pula para a próxima foto se o arquivo estiver corrompido
-                        }
-
-                        // 4. Formata um nome de arquivo seguro usando o nome original
-                        $nomeSemExtensao = pathinfo($nomeOriginal, PATHINFO_FILENAME);
-                        $nomeLimpo = \Illuminate\Support\Str::slug($nomeSemExtensao); // Remove acentos e espaços
-
-                        // Exemplo do resultado final: 650a1b2c_foto-da-garrafa.png
-                        $nomeArquivo = uniqid() . '_' . $nomeLimpo . '.' . $extensaoReal;
-                        $caminhoAnexo = 'anexos_avarias/' . $nomeArquivo;
-
-                        // Salva fisicamente o arquivo
-                        Storage::disk('public')->put($caminhoAnexo, $anexoDecodificado);
-
-                        // 5. Salva no banco de dados
-                        AnexosAvaria::create([
-                            'avaria_id' => $avaria->id,
-                            'path' => $caminhoAnexo,
-                        ]);
+                // 2. Agrupa os produtos da requisição por nota_fiscal_id
+                // Isso garante que se o motorista mandar produtos de notas diferentes na mesma requisição,
+                // o sistema crie/atualize as avarias separadamente.
+                $produtosPorNota = [];
+                foreach ($produtosInput as $produtoReq) {
+                    // Importante: ajuste o namespace '\App\Models\ProdutoNotaFiscal' se o seu for diferente
+                    $produtoNota = \App\Models\ProdutoNotaFiscal::find($produtoReq['produto_id']);
+                    if ($produtoNota) {
+                        $produtosPorNota[$produtoNota->nota_fiscal_id][] = $produtoReq;
                     }
                 }
 
-                return $avaria;
-            });
+                $avariasProcessadas = [];
 
-            if ($avaria instanceof JsonResponse) {
-                return $avaria; // Retorna o erro de validação se houver
-            }
+                // 3. Processa a regra de negócio para cada Nota Fiscal encontrada
+                foreach ($produtosPorNota as $notaFiscalId => $produtosDaNota) {
+
+                    // Busca se JÁ EXISTE uma avaria PENDENTE para este cliente e esta Nota
+                    $avaria = Avaria::where('cliente_id', $validated['cliente_id'])
+                        ->where('status', 'pendente') // Evita alterar avarias já aprovadas/fechadas
+                        ->whereHas('itens.produtoNotaFiscal', function ($q) use ($notaFiscalId) {
+                            $q->where('nota_fiscal_id', $notaFiscalId);
+                        })
+                        ->first();
+
+                    // Se não encontrou, cria a Avaria principal
+                    if (!$avaria) {
+                        $avaria = Avaria::create([
+                            ...$validated,
+                            'status' => 'pendente',
+                            'data_emissao' => now(),
+                        ]);
+                    }
+
+                    // 4. Processa os itens desta Nota Fiscal
+                    foreach ($produtosDaNota as $prodReq) {
+
+                        // Verifica se já existe o MESMO PRODUTO com o MESMO TIPO DE AVARIA
+                        $itemExistente = $avaria->itens()
+                            ->where('produto_nota_fiscal_id', $prodReq['produto_id'])
+                            ->where('tipo_avaria_id', $prodReq['tipo_avaria_id'])
+                            ->first();
+
+                        if ($itemExistente) {
+                            // Se existir, APENAS ATUALIZA (Estou somando a quantidade nova com a que já existia)
+                            // Obs: Se a regra for sobrescrever em vez de somar, troque += por =
+                            $itemExistente->quantidade_avariada += $prodReq['quantidade'];
+                            $itemExistente->save();
+                        } else {
+                            // Se for tipo diferente, ou um produto novo, CRIA UM NOVO ITEM
+                            $avaria->itens()->create([
+                                'produto_nota_fiscal_id' => $prodReq['produto_id'],
+                                'tipo_avaria_id'         => $prodReq['tipo_avaria_id'],
+                                'quantidade_avariada'    => $prodReq['quantidade'],
+                            ]);
+                        }
+                    }
+
+                    // 5. Salva os Anexos vinculados à Avaria (seja ela nova ou existente)
+                    if ($request->has('anexos')) {
+                        foreach ($request->anexos as $anexo) {
+
+                            $nomeOriginal = $anexo['nome'] ?? 'anexo_sem_nome.jpg';
+                            $base64Anexo = $anexo['base64'];
+
+                            $extensaoReal = 'jpg';
+                            if (preg_match('/^data:image\/([a-zA-Z0-9]+);base64,/', $base64Anexo, $type)) {
+                                $extensaoReal = strtolower($type[1]);
+                            } else {
+                                $extensaoReal = pathinfo($nomeOriginal, PATHINFO_EXTENSION) ?: 'jpg';
+                            }
+
+                            if (strpos($base64Anexo, ',') !== false) {
+                                $base64Anexo = explode(',', $base64Anexo)[1];
+                            }
+
+                            $base64Anexo = str_replace(' ', '+', $base64Anexo);
+                            $anexoDecodificado = base64_decode($base64Anexo);
+
+                            if ($anexoDecodificado === false) {
+                                continue;
+                            }
+
+                            $nomeSemExtensao = pathinfo($nomeOriginal, PATHINFO_FILENAME);
+                            $nomeLimpo = \Illuminate\Support\Str::slug($nomeSemExtensao);
+
+                            $nomeArquivo = uniqid() . '_' . $nomeLimpo . '.' . $extensaoReal;
+                            $caminhoAnexo = 'anexos_avarias/' . $nomeArquivo;
+
+                            Storage::disk('public')->put($caminhoAnexo, $anexoDecodificado);
+
+                            AnexosAvaria::create([
+                                'avaria_id' => $avaria->id,
+                                'path' => $caminhoAnexo,
+                            ]);
+                        }
+                    }
+
+                    $avariasProcessadas[] = $avaria;
+                }
+
+                return collect($avariasProcessadas);
+            });
 
             return response()->json([
                 'success' => true,
-                'message' => 'Avaria registrada com sucesso.',
+                'message' => 'Avaria registrada/atualizada com sucesso.',
             ], 201);
         } catch (\Exception $e) {
             Log::error('Erro ao registrar avaria: ' . $e->getMessage());
@@ -219,9 +255,9 @@ class AvariasController extends Controller
     {
         // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
-            'status' => ['required', 'string', 'in:aprovada,reprovada'],
+            'status' => ['required', 'string', 'in:aprovada,reprovada,enviada,trocada'],
         ], [
-            'status.in' => 'O status deve ser apenas aprovada ou reprovada.'
+            'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.'
         ]);
 
         try {
