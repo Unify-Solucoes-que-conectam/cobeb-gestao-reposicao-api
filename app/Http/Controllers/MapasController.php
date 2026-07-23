@@ -111,8 +111,8 @@ class MapasController extends Controller
             $avariasMapa = $query->with([
                 'itens',
                 'itens.produtoNotaFiscal' => function ($query) {
-                    $query->withCount('produtos') // Traz a quantidade de produtos
-                        ->with(['filial', 'categoria', 'contatos']);
+                    $query->withCount('produto') // Traz a quantidade de produtos
+                        ->with(['produto.tipoMarca', 'produto.embalagem']);
                 }
             ])->get();
 
