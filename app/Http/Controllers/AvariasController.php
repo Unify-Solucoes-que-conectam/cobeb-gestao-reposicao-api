@@ -278,19 +278,75 @@ class AvariasController extends Controller
 
             // Enviar via WhatsApp
             $whatsapp = new WhatsAppService();
-            $sent = $whatsapp->sendMessage('37991946275', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso.");
+
+            // armazena todos os números de telefone do cliente
+            $clientePhones = $avaria->cliente->contatos->pluck('numero')
+                ->filter() // Remove valores nulos ou vazios
+                ->unique() // Remove duplicados
+                ->toArray();
+
+            // organiza os números de telefone do array onde os primeiros devem ser números de telefone no formato 3799xxxxxxx
+            usort($clientePhones, function ($a, $b) {
+                // Se ambos os números tiverem 11 dígitos, mantém a ordem
+                if (strlen($a) === 11 && strlen($b) === 11) {
+                    return 0;
+                }
+                // Se apenas $a tiver 11 dígitos, coloca $a antes de $b
+                if (strlen($a) === 11) {
+                    return -1;
+                }
+                // Se apenas $b tiver 11 dígitos, coloca $b antes de $a
+                if (strlen($b) === 11) {
+                    return 1;
+                }
+                // Se nenhum dos dois tiver 11 dígitos, mantém a ordem original
+                return 0;
+            });
+
+            /**
+             * mandar mensagem sempre para o primeiro número do array, que deve ser o número de telefone no formato 3799xxxxxxx
+             * se estiver em outro formato ou não tiver número marcar todos os números do cliente com isWhatsapp false e não enviar mensagem
+             */
+            $clientePhone = null;
+            foreach ($clientePhones as $phone) {
+                if (strlen($phone) === 11) {
+                    $clientePhone = $phone;
+                    break;
+                } else {
+                    // marca o contato como não tendo WhatsApp
+                    $contato = $avaria->cliente->contatos()->where('numero', $phone)->first();
+                    if ($contato) {
+                        $contato->isWhatsapp = false;
+                        $contato->save();
+                    }
+                }
+            }
+
+            // Se não encontrou nenhum número válido, retorna erro
+            if (!$clientePhone) {
+                Log::warning("Nenhum número de telefone válido encontrado para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
+                return response()->json([
+                    'success' => false,
+                    'message' => "Avaria atualizada para {$request->status}, mas nenhum número de telefone válido foi encontrado para enviar notificação via WhatsApp."
+                ], 500);
+            }
+
+            $clientePhone = config('app.env') === 'production'
+                ? $clientePhone
+                : config('app.whatsapp_test_number');
+            $sent = $whatsapp->sendMessage($clientePhone, "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso.");
 
             if (!$sent) {
                 Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
                 return response()->json([
                     'success' => false,
-                    'message' => "Avaria {$request->status} com sucesso, mas falha ao enviar notificação via WhatsApp."
+                    'message' => "Avaria atualizada para {$request->status}, mas falha ao enviar notificação via WhatsApp."
                 ], 500);
             }
 
             return response()->json([
                 'success' => true,
-                'message' => "Avaria {$request->status} com sucesso, o cliente foi notificado via WhatsApp.",
+                'message' => "Avaria atualizada para {$request->status}, o cliente foi notificado via WhatsApp.",
                 'data' => $avaria
             ]);
         } catch (ModelNotFoundException $e) {
