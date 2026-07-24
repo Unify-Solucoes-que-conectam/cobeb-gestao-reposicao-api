@@ -301,8 +301,8 @@ class AvariasController extends Controller
             // 2. Busca a avaria pelo ID
             $avaria = Avaria::findOrFail($id);
 
-            // 3. Regra de negócio: só pode alterar se estiver 'pendente'
-            if (strtolower($avaria->status) !== 'pendente') {
+            // 3. Regra de negócio: só pode alterar se estiver 'enviada'
+            if (strtolower($avaria->status) !== 'enviada') {
                 return response()->json([
                     'success' => false,
                     'message' => "Não é possível alterar o status. A avaria atual encontra-se como '{$avaria->status}'."
@@ -311,6 +311,24 @@ class AvariasController extends Controller
 
             // 4. Atualiza o status e salva
             $avaria->status = $request->status;
+
+            // adicionar dados do aprovador/reprovador de acordo com o status
+            if ($request->status === 'aprovada') {
+                $avaria->aprovador_id = $request->user()->id;
+                $avaria->data_aprovacao = now();
+            } elseif ($request->status === 'reprovada') {
+                $avaria->aprovador_id = $request->user()->id;
+                $avaria->data_aprovacao = now();
+
+                if (empty($request->motivo_reprovacao)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'O motivo da reprovação é obrigatório.'
+                    ], 400);
+                }
+                
+                $avaria->motivo_reprovacao = $request->motivo_reprovacao;
+            }
             $avaria->save(); //
 
             // Enviar via WhatsApp
@@ -364,7 +382,8 @@ class AvariasController extends Controller
                 Log::warning("Nenhum número de telefone válido encontrado para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
                 return response()->json([
                     'success' => false,
-                    'message' => "Avaria atualizada para {$request->status}, mas nenhum número de telefone válido foi encontrado para enviar notificação via WhatsApp."
+                    'message' => "Avaria atualizada para {$request->status}, mas nenhum número de telefone válido foi encontrado para enviar notificação via WhatsApp.",
+                    'error_code' => 'WHATSAPP_PHONENUMBER_NOTFOUND'
                 ], 500);
             }
 
@@ -377,7 +396,8 @@ class AvariasController extends Controller
                 Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
                 return response()->json([
                     'success' => false,
-                    'message' => "Avaria atualizada para {$request->status}, mas falha ao enviar notificação via WhatsApp."
+                    'message' => "Avaria atualizada para {$request->status}, mas falha ao enviar notificação via WhatsApp.",
+                    'error_code' => 'WHATSAPP_NOTIFICATION_FAILED'
                 ], 500);
             }
 

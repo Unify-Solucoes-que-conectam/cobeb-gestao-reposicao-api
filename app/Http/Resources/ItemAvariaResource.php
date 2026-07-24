@@ -21,9 +21,9 @@ class ItemAvariaResource extends JsonResource
                 'codigo' => $this->produtoNotaFiscal->produto->codigo,
                 'descricao' => $this->produtoNotaFiscal->produto->descricao,
                 'quantidade_total' => $this->produtoNotaFiscal->quantidade,
+                'quantidade_avariada' => $this->quantidade_avariada,
+                'tipo_avaria' => new TipoAvariaResource($this->whenLoaded('tipoAvaria')),
             ]),
-            'quantidade_avariada' => $this->quantidade_avariada,
-            'tipo_avaria' => new TipoAvariaResource($this->whenLoaded('tipoAvaria')),
         ];
     }
 }
