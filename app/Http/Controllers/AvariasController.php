@@ -371,4 +371,47 @@ class AvariasController extends Controller
             ], 500);
         }
     }
+
+    public function destroy(string $id)
+    {
+        try {
+            $avaria = Avaria::findOrFail($id);
+
+            // Verifica se a avaria está em status 'pendente'
+            if ($avaria->status !== 'pendente') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Não é possível deletar a avaria. O status atual é '{$avaria->status}'."
+                ], 400);
+            }
+
+            // Deleta os anexos associados à avaria
+            foreach ($avaria->anexos as $anexo) {
+                Storage::disk('public')->delete($anexo->path);
+                $anexo->delete();
+            }
+
+            // Deleta os itens da avaria
+            $avaria->itens()->delete();
+
+            // Deleta a avaria
+            $avaria->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Avaria deletada com sucesso.'
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Avaria não encontrada.'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ocorreu um erro ao deletar a avaria.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
