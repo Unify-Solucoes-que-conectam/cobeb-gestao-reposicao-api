@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Resources\AvariaResource;
 use App\Models\AnexosAvaria;
 use App\Models\Avaria;
+use App\Models\ProdutoNotaFiscal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -83,8 +84,7 @@ class AvariasController extends Controller
                 // o sistema crie/atualize as avarias separadamente.
                 $produtosPorNota = [];
                 foreach ($produtosInput as $produtoReq) {
-                    // Importante: ajuste o namespace '\App\Models\ProdutoNotaFiscal' se o seu for diferente
-                    $produtoNota = \App\Models\ProdutoNotaFiscal::find($produtoReq['produto_id']);
+                    $produtoNota = ProdutoNotaFiscal::find($produtoReq['produto_id']);
                     if ($produtoNota) {
                         $produtosPorNota[$produtoNota->nota_fiscal_id][] = $produtoReq;
                     }
@@ -108,7 +108,7 @@ class AvariasController extends Controller
                         $avaria = Avaria::create([
                             ...$validated,
                             'status' => 'pendente',
-                            'data_emissao' => now(),
+                            'data_emissao' => now(), // Data e hora da criação da avaria
                         ]);
                     }
 
@@ -181,6 +181,13 @@ class AvariasController extends Controller
 
                 return collect($avariasProcessadas);
             });
+
+            if ($resultado->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nenhuma avaria foi processada. Verifique os dados enviados.',
+                ], 400);
+            }
 
             return response()->json([
                 'success' => true,
