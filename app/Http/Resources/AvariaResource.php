@@ -12,6 +12,7 @@ class AvariaResource extends JsonResource
         return [
             'id' => $this->id,
             'motorista' => new MotoristaResource($this->whenLoaded('motorista')),
+            'cliente' => new ClienteResource($this->whenLoaded('cliente')),
             'status' => $this->status,
             'data_emissao' => $this->data_emissao,
             'aprovador' => new UsuarioResource($this->whenLoaded('aprovador')),

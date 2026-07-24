@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Resources\AvariaResource;
+use App\Http\Resources\ItemAvariaResource;
 use App\Models\AnexosAvaria;
 use App\Models\Avaria;
 use App\Models\ProdutoNotaFiscal;
@@ -54,6 +55,35 @@ class AvariasController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao processar avarias.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function itens(Request $request, string $id)
+    {
+        try {
+            $avaria = Avaria::with([
+                'itens',
+                'itens.produtoNotaFiscal',
+                'itens.produtoNotaFiscal.produto',
+                'itens.tipoAvaria'
+            ])->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Itens da avaria carregados com sucesso.',
+                'data' => ItemAvariaResource::collection($avaria->itens)
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Avaria não encontrada.'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar itens da avaria.',
                 'error'   => $e->getMessage()
             ], 500);
         }
