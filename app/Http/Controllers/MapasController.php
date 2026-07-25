@@ -69,20 +69,24 @@ class MapasController extends Controller
     public function clientes(Request $request, string $mapaId)
     {
         try {
+            $user = $request->user();
             $query = ClientesMapa::query();
 
             // Filtra o mapa pelo ID fornecido
             $query->where('mapa_id', $mapaId);
 
             $clientesMapa = ClientesMapa::where('mapa_id', $mapaId)
+                // retorna apenas os clientes do mapa que possuem data de entrega igual a hoje, caso o usuário seja um motorista
+                ->when($user->role === 'motorista', fn ($query) => $query->whereHas('mapa', function ($query) {
+                    $query->where('data_entrega', '=', now()->toDateString());
+                }))
                 ->with([
                     // Usamos um array no 'cliente' para injetar o withCount e carregar as outras relações
                     'cliente' => function ($query) {
                         $query->withCount('notasFiscais') // Traz o número de notas sem carregar todos os registros
                             ->with(['filial', 'categoria', 'contatos']);
                     }
-                ])
-                ->get();
+                ])->get();
 
             return response()->json([
                 'success' => true,

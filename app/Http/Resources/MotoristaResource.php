@@ -7,15 +7,28 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class MotoristaResource extends JsonResource
 {
+    protected $dataEntrega;
+
+    // Construtor para receber a data da avaria (opcional)
+    public function __construct($resource, $dataEntrega = null)
+    {
+        parent::__construct($resource);
+        $this->dataEntrega = $dataEntrega;
+    }
+
     /**
      * Transform the resource into an array.
      *
      * @return array<string, mixed>
      */
-    public function toArray(Request $request): array
+    public function toArray(Request $request, $dataEmissao = null): array
     {
 
         $esconderCampos = $request->routeIs(['auth.login']);
+
+        $mapa = ($this->relationLoaded('mapas') && $this->dataEntrega)
+            ? $this->mapas->firstWhere('data_entrega', $this->dataEntrega)
+            : null;
 
         return [
             'id' => $this->id,
@@ -26,8 +39,7 @@ class MotoristaResource extends JsonResource
             'data_admissao' => $this->data_admissao,
             'data_inativacao' => $this->data_inativacao,
 
-            // Aqui carregamos os objetos, mas note que NÃO incluímos filial_id e cluster_id
-            'mapa' => new MapaResource($this->whenLoaded('mapaAtual')),
+            'mapa' => $mapa ? new MapaResource($mapa) : null,
             'filial' => new FilialResource($this->whenLoaded('filial')),
             'cluster' => new ClusterResource($this->whenLoaded('cluster')),
         ];
