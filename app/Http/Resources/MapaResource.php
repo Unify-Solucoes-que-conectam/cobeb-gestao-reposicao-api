@@ -17,9 +17,11 @@ class MapaResource extends JsonResource
         return [
             'id' => $this->id,
             'codigo' => $this->codigo,
+            'filial' => new FilialResource($this->whenLoaded('filial')),
             'motorista' => new MotoristaResource($this->whenLoaded('motorista')),
             'data_entrega' => $this->data_entrega,
             'placa' => $this->placa,
+            'clientes' => ClientesMapaResource::collection($this->whenLoaded('clientes')),
         ];
     }
 }

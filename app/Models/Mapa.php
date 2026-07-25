@@ -20,9 +20,15 @@ class Mapa extends Model
     protected $fillable = [
         'codigo',
         'motorista_id',
+        'filial_id',
         'data_entrega',
         'placa'
     ];
+
+    public function filial()
+    {
+        return $this->belongsTo(Filial::class, 'filial_id');
+    }
 
     public function motorista()
     {

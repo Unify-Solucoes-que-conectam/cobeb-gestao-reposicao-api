@@ -39,7 +39,7 @@ class MotoristaResource extends JsonResource
             'data_admissao' => $this->data_admissao,
             'data_inativacao' => $this->data_inativacao,
 
-            'mapa' => $mapa ? new MapaResource($mapa) : null,
+            'mapa' => $this->whenLoaded('mapaAtual') ? new MapaResource($this->mapaAtual) : ($mapa ? new MapaResource($mapa) : null),
             'filial' => new FilialResource($this->whenLoaded('filial')),
             'cluster' => new ClusterResource($this->whenLoaded('cluster')),
         ];

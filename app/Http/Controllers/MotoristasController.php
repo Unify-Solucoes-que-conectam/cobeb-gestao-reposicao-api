@@ -29,6 +29,14 @@ class MotoristasController extends Controller
             $query->where('status', $request->input('status'));
         }
 
+        if ($request->filled('filial_id')) {
+            $query->where('filial_id', $request->input('filial_id'));
+        }
+
+        if ($request->boolean('only_without_map')) {
+            $query->whereDoesntHave('mapaAtual');
+        }
+
         $motoristas = $query->with([
             'mapaAtual',
             'usuario',

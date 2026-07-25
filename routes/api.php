@@ -11,6 +11,8 @@ Route::post('auth/login', [AuthController::class, 'login'])->name('auth.login');
 Route::post('auth/register', [AuthController::class, 'register']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
+
+    Route::get('auth/check-session', [AuthController::class, 'checkSession']);
     Route::get('auth/logout', [AuthController::class, 'logout']);
 
     AppRouter::load(base_path('routes/private'));

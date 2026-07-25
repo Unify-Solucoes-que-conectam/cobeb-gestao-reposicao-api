@@ -22,10 +22,11 @@ class MapasController extends Controller
             }
 
             $mapas = $query->with([
-                'clientes.cliente',
                 'motorista',
                 'motorista.filial',
-                'motorista.cluster'
+                'motorista.cluster',
+                'filial',
+                'clientes.cliente',
             ]);
 
             return response()->json([
@@ -78,7 +79,7 @@ class MapasController extends Controller
             $clientesMapa = ClientesMapa::where('mapa_id', $mapaId)
                 // retorna apenas os clientes do mapa que possuem data de entrega igual a hoje, caso o usuário seja um motorista
                 ->when($user->role === 'motorista', fn ($query) => $query->whereHas('mapa', function ($query) {
-                    $query->where('data_entrega', '=', now()->toDateString());
+                    $query->where('data_entrega', '=', today());
                 }))
                 ->with([
                     // Usamos um array no 'cliente' para injetar o withCount e carregar as outras relações
@@ -129,6 +130,30 @@ class MapasController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao processar avarias vinculadas ao mapa.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function designarMotorista(Request $request, string $mapaId, string $motoristaId)
+    {
+        try {
+            // 1. Encontra o mapa pelo ID fornecido
+            $mapa = Mapa::findOrFail($mapaId);
+
+            // 2. Atualiza o motorista do mapa
+            $mapa->motorista_id = $motoristaId;
+            $mapa->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Motorista designado ao mapa com sucesso.',
+                'data'    => new MapaResource($mapa)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao designar motorista ao mapa.',
                 'error'   => $e->getMessage()
             ], 500);
         }
