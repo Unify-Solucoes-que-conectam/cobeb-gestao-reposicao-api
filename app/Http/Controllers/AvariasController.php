@@ -286,8 +286,9 @@ class AvariasController extends Controller
         // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
             'status' => ['required', 'string', 'in:aprovada,reprovada,enviada,trocada'],
+            'motivo_reprovacao' => ['nullable', 'string', 'max:255'],
         ], [
-            'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.'
+            'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.',
         ]);
 
         try {
