@@ -12,7 +12,7 @@ return new class extends Migration
             $table->string('id', 8)->primary();
             $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
             $table->foreignUuid('motorista_id')->nullable()->constrained('motoristas')->nullOnDelete();
-            $table->enum('status', ['pendente', 'enviada', 'reprovada', 'aprovada', 'trocada'])->default('pendente');
+            $table->enum('status', ['pendente', 'aguardando_aprovacao', 'reprovada', 'aprovada', 'trocada'])->default('pendente');
             $table->dateTimeTz('data_emissao')->useCurrent();
             $table->foreignUuid('aprovador_id')->nullable()->constrained('usuarios')->nullOnDelete();
             $table->dateTimeTz('data_aprovacao')->nullable();

@@ -24,24 +24,44 @@ class AvariasController extends Controller
         try {
             $query = Avaria::query();
 
-            if ($request->has('search')) {
+            // 1. Busca agrupada (Isola os ORs dentro de parênteses lógicos)
+            if ($request->filled('search')) {
+                $search = $request->input('search');
 
-                // consultar pelo nome ou código do cliente
-                $query->orWhereHas('cliente', function ($q) use ($request) {
-                    $q->where('nome_fantasia', 'like', '%' . $request->search . '%')->orWhere('codigo', 'like', '%' . $request->search . '%');
+                // Onde (where) inicia o bloco ( )
+                $query->where(function ($q) use ($search) {
+
+                    $q->whereHas('cliente', function ($qCliente) use ($search) {
+                        $qCliente->where('nome_fantasia', 'like', '%' . $search . '%')
+                            ->orWhere('codigo', 'like', '%' . $search . '%');
+                    })
+                        ->orWhere('id', 'like', '%' . $search . '%'); // Fecha o bloco ( )
+
                 });
             }
 
+            // 2. Filtro de Status
+            // O filled garante que só filtra se vier um status válido, ignorando strings vazias
+            if ($request->filled('status')) {
+                $query->where('status', $request->input('status'));
+            }
+
+            // 3. Filtro de Filial
+            if ($request->filled('filialId')) {
+                $filialId = $request->input('filialId');
+                $query->whereHas('motorista.filial', function ($q) use ($filialId) {
+                    $q->where('id', $filialId);
+                });
+            }
+
+            // 4. Eager Loading e Retorno
             $avarias = $query->with([
                 'cliente',
-                'motorista',
                 'motorista.mapas',
                 'motorista.cluster',
                 'motorista.filial',
                 'aprovador',
                 'anexos',
-                'itens',
-                'itens.produtoNotaFiscal',
                 'itens.produtoNotaFiscal.produto',
                 'itens.produtoNotaFiscal.notaFiscal',
                 'itens.tipoAvaria',
@@ -285,18 +305,18 @@ class AvariasController extends Controller
     {
         // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
-            'status' => ['required', 'string', 'in:aprovada,reprovada,enviada,trocada'],
+            'status' => ['required', 'string', 'in:aprovada,reprovada,aguardando_aprovacao,trocada'],
             'motivo_reprovacao' => ['nullable', 'string', 'max:255'],
         ], [
-            'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.',
+            'status.in' => 'O status deve ser apenas aprovada, reprovada, aguardando aprovação ou trocada.',
         ]);
 
         try {
             // 2. Busca a avaria pelo ID
             $avaria = Avaria::findOrFail($id);
 
-            // 3. Regra de negócio: só pode alterar se estiver 'enviada'
-            if (strtolower($avaria->status) !== 'enviada') {
+            // 3. Regra de negócio: só pode alterar se estiver 'aguardando_aprovacao'
+            if (strtolower($avaria->status) !== 'aguardando_aprovacao') {
                 return response()->json([
                     'success' => false,
                     'message' => "Não é possível alterar o status. A avaria atual encontra-se como '{$avaria->status}'."
