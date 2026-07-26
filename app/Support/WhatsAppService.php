@@ -59,6 +59,44 @@ class WhatsAppService
         }
     }
 
+    public function sendMedia(string $number, string $mediatype, string $mimetype, string $caption, string $media, string $fileName): bool
+    {
+        try {
+            /** @var Response $response */
+            $response = Http::withHeaders([
+                'apikey' => $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->post("{$this->baseUrl}/message/sendMedia/{$this->instance}", [
+                'number' => $number,
+                'mediatype' => $mediatype,
+                'mimetype' => $mimetype,
+                'caption' => $caption,
+                'media' => $media,
+                'fileName' => $fileName,
+            ]);
+
+            if ($response->successful()) {
+                Log::info('Arquivo enviado', ['number' => $number]);
+                return true;
+            }
+
+            Log::error('Erro ao enviar arquivo', [
+                'number' => $number,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return false;
+        } catch (\Throwable $e) {
+            Log::error('Exceção ao enviar arquivo', [
+                'number' => $number,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     protected function formatNumber(string $phone): string
     {
         // Remove tudo que não é dígito

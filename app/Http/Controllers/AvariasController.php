@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use App\Support\WhatsAppService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class AvariasController extends Controller
 {
@@ -181,6 +182,41 @@ class AvariasController extends Controller
 
                 return collect($avariasProcessadas);
             });
+
+            $dadosPdf = [
+                'nome' => 'Ismael de Freitas Santiago',
+                'data' => now()->format('d/m/Y H:i:s'),
+            ];
+
+            // gerar relatório de avarias
+            $pdf = Pdf::loadView('pdf.avarias', $dadosPdf);
+
+            // Define um nome único para o arquivo
+            $nomeArquivo = 'relatorio_' . time() . '.pdf';
+
+            // Caminho onde será salvo: storage/app/public/documentos/
+            $caminho = 'documentos/' . $nomeArquivo;
+
+            // Salva o PDF no disco "public"
+            Storage::disk('public')->put($caminho, $pdf->output());
+
+            $whatsapp = new WhatsAppService();
+            $mediaSended = $whatsapp->sendMedia(
+                '5537998247669',
+                'document',
+                'application/pdf',
+                'Olá, segue o relatório de avarias.',
+                asset(Storage::url($caminho)),
+                $nomeArquivo
+            );
+
+            if (!$mediaSended) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Avaria registrada/atualizada, mas falha ao enviar relatório via WhatsApp.',
+                    'filePath' => asset(Storage::url($caminho))
+                ], 500);
+            }
 
             return response()->json([
                 'success' => true,
