@@ -17,7 +17,9 @@ class MapaResource extends JsonResource
         return [
             'id' => $this->id,
             'codigo' => $this->codigo,
+            'clientes' => ClienteResource::collection($this->whenLoaded('clientes')),
             'motorista' => new MotoristaResource($this->whenLoaded('motorista')),
+            'filial' => new FilialResource($this->whenLoaded('filial')),
             'data_entrega' => $this->data_entrega,
             'placa' => $this->placa,
         ];

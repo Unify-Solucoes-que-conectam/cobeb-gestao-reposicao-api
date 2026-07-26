@@ -22,10 +22,12 @@ class MapasController extends Controller
             }
 
             $mapas = $query->with([
+                'clientes',
                 'clientes.cliente',
                 'motorista',
                 'motorista.filial',
-                'motorista.cluster'
+                'motorista.cluster',
+                'filial'
             ]);
 
             return response()->json([
@@ -125,6 +127,30 @@ class MapasController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao processar avarias vinculadas ao mapa.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function designarMotorista(Request $request, string $mapaId, string $motoristaId)
+    {
+        try {
+            // 1. Encontra o mapa pelo ID fornecido
+            $mapa = Mapa::findOrFail($mapaId);
+
+            // 2. Atualiza o motorista_id do mapa
+            $mapa->motorista_id = $motoristaId;
+            $mapa->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Motorista designado ao mapa com sucesso.',
+                'data'    => new MapaResource($mapa)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao designar motorista ao mapa.',
                 'error'   => $e->getMessage()
             ], 500);
         }

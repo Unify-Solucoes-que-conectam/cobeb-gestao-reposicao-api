@@ -59,15 +59,17 @@ class WhatsAppService
         }
     }
 
-    public function sendMedia(string $number, string $mediatype, string $mimetype, string $caption, string $media, string $fileName): bool
+    public function sendMedia(string $phone, string $mediatype, string $mimetype, string $caption, string $media, string $fileName): bool
     {
+        $number = $this->formatNumber($phone);
+
         try {
             /** @var Response $response */
             $response = Http::withHeaders([
                 'apikey' => $this->apiKey,
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}/message/sendMedia/{$this->instance}", [
-                'number' => $number,
+                'number' => config('app.env') === 'local' ? '5537998247669' : $number,
                 'mediatype' => $mediatype,
                 'mimetype' => $mimetype,
                 'caption' => $caption,

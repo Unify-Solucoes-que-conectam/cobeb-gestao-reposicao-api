@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Resources\AvariaResource;
 use App\Models\AnexosAvaria;
 use App\Models\Avaria;
+use App\Models\ProdutoNotaFiscal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use App\Support\WhatsAppService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class AvariasController extends Controller
@@ -85,7 +87,7 @@ class AvariasController extends Controller
                 $produtosPorNota = [];
                 foreach ($produtosInput as $produtoReq) {
                     // Importante: ajuste o namespace '\App\Models\ProdutoNotaFiscal' se o seu for diferente
-                    $produtoNota = \App\Models\ProdutoNotaFiscal::find($produtoReq['produto_id']);
+                    $produtoNota = ProdutoNotaFiscal::find($produtoReq['produto_id']);
                     if ($produtoNota) {
                         $produtosPorNota[$produtoNota->nota_fiscal_id][] = $produtoReq;
                     }
@@ -183,39 +185,82 @@ class AvariasController extends Controller
                 return collect($avariasProcessadas);
             });
 
-            $dadosPdf = [
-                'nome' => 'Ismael de Freitas Santiago',
-                'data' => now()->format('d/m/Y H:i:s'),
-            ];
+            if (!$resultado->isEmpty()) {
+                // $resultado contém a coleção de Avarias geradas/atualizadas
+                $avarias = $resultado;
 
-            // gerar relatório de avarias
-            $pdf = Pdf::loadView('pdf.avarias', $dadosPdf);
+                if ($avarias->isEmpty()) {
+                    return response()->json(['message' => 'Nenhuma avaria processada.'], 400);
+                }
 
-            // Define um nome único para o arquivo
-            $nomeArquivo = 'relatorio_' . time() . '.pdf';
+                // 2. Pegar os dados gerais (O cliente é o mesmo para todas as avarias dessa requisição)
+                $avariaPrincipal = $avarias->first()->load([
+                    'itens.produtoNotaFiscal.notaFiscal',
+                    'itens.tipoAvaria',
+                    'cliente',
+                    'cliente.contatos'
+                ]);
+                $clienteModel = $avariaPrincipal->cliente;
 
-            // Caminho onde será salvo: storage/app/public/documentos/
-            $caminho = 'documentos/' . $nomeArquivo;
+                $enderecoCompleto = $clienteModel->endereco . ', ' . $clienteModel->bairro . ', ' . $clienteModel->cidade . ' - ' . $clienteModel->uf . ', CEP: ' . $clienteModel->cep;
+                $contatoCliente = $clienteModel->contatos->where('isWhatsapp', true)->first() ?? null;
 
-            // Salva o PDF no disco "public"
-            Storage::disk('public')->put($caminho, $pdf->output());
+                // Mapeando os dados do cliente (Ajuste os nomes das colunas conforme seu banco de dados)
+                $tipoDocumento = Str::length($clienteModel->documento ?? '') === 11 ? 'cpf' : 'cnpj';
 
-            $whatsapp = new WhatsAppService();
-            $mediaSended = $whatsapp->sendMedia(
-                '5537998247669',
-                'document',
-                'application/pdf',
-                'Olá, segue o relatório de avarias.',
-                asset(Storage::url($caminho)),
-                $nomeArquivo
-            );
+                $cliente = (object)[
+                    'nome'     => $clienteModel->razao_social ?? $clienteModel->nome,
+                    $tipoDocumento => $clienteModel->documento ?? '',
+                    'endereco' => $enderecoCompleto ?? 'Endereço não cadastrado',
+                    'telefone' => $contatoCliente->numero ?? 'N/A'
+                ];
 
-            if (!$mediaSended) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Avaria registrada/atualizada, mas falha ao enviar relatório via WhatsApp.',
-                    'filePath' => asset(Storage::url($caminho))
-                ], 500);
+                // Gerando um número de protocolo único para este documento
+                $protocolo = 'AVR-' . $avariaPrincipal->id;
+
+                // 3. Montando o array de dados para a View
+                $data = [
+                    'protocolo' => $protocolo,
+                    'cliente'   => $cliente,
+                    'avarias'   => $avarias // Passamos a coleção completa para o Blade
+                ];
+
+                // gerar relatório de avarias
+                $pdf = Pdf::loadView('pdf.avarias', $data);
+
+                // Define um nome único para o arquivo
+                $nomeArquivo = 'relatorio_' . time() . '.pdf';
+
+                // Caminho onde será salvo: storage/app/public/documentos/
+                $caminho = 'documentos/' . $nomeArquivo;
+
+                // Salva o PDF no disco "public"
+                Storage::disk('public')->put($caminho, $pdf->output());
+
+                $whatsapp = new WhatsAppService();
+
+                if ($contatoCliente) {
+                    $mediaSended = $whatsapp->sendMedia(
+                        $contatoCliente->numero,
+                        'document',
+                        'application/pdf',
+                        'Olá, segue o relatório de avarias.',
+                        base64_encode($pdf->output()), // base64 do PDF
+                        $nomeArquivo
+                    );
+
+                    if (!$mediaSended) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Avaria registrada/atualizada, mas falha ao enviar relatório via WhatsApp.'
+                        ], 500);
+                    }
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Avaria registrada/atualizada, mas não foi possível enviar relatório via WhatsApp. Contato do cliente não cadastrado.',
+                    ], 404);
+                }
             }
 
             return response()->json([
