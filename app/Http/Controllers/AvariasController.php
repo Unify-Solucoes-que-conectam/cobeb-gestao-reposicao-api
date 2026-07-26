@@ -30,6 +30,7 @@ class AvariasController extends Controller
             }
 
             $avarias = $query->with([
+                'anexos',
                 'cliente',
                 'motorista',
                 'motorista.mapaAtual',
@@ -254,6 +255,7 @@ class AvariasController extends Controller
     public function updateStatus(Request $request, string $id)
     {
         // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
+        // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
             'status' => ['required', 'string', 'in:aprovada,reprovada,enviada,trocada'],
         ], [
@@ -278,6 +280,7 @@ class AvariasController extends Controller
 
             // Enviar via WhatsApp
             $whatsapp = new WhatsAppService();
+            $sent = $whatsapp->sendMessage('37991946275', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso.");
             $sent = $whatsapp->sendMessage('37991946275', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso.");
 
             if (!$sent) {
