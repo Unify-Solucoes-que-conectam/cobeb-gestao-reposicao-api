@@ -22,19 +22,16 @@ class ProdutosController extends Controller
             });
         }
 
-        // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
-        if ($request->boolean('detalhar')) {
-            $query->with([
-                'tipoMarca',
-                'embalagem',
-            ]);
-        }
+        $produto = $query->get()->load([
+            'tipoMarca',
+            'embalagem',
+        ]);
 
         try {
             return response()->json([
                 'success' => true,
                 'message' => 'Consulta de produtos realizada com sucesso.',
-                'data' => ProdutoResource::collection($query->get())
+                'data' => ProdutoResource::collection($produto)
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -50,17 +47,12 @@ class ProdutosController extends Controller
         // consultar dados do produto
         $query = Produto::query()->where('codigo', $codigo);
 
-        // consultar quais detalhes devem ser carregados com base no parâmetro 'detalhar' (boolean) da requisição
-        if ($request->boolean('detalhar')) {
-            $query->with([
-                'tipoMarca',
-                'embalagem',
-            ]);
-        }
-
         try {
 
-            $produto = ProdutoResource::collection($query->get())->first();
+            $produto = ProdutoResource::collection($query->get()->load([
+                'tipoMarca',
+                'embalagem',
+            ]))->first();
 
             if (!$produto) {
                 return response()->json([
@@ -71,14 +63,14 @@ class ProdutosController extends Controller
             } else {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Consulta de produto realizada com sucesso.',
+                    'message' => 'Produto encontrado com sucesso.',
                     'data' => [$produto]
                 ]);
             }
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao consultar produto.'
+                'message' => 'Erro encontrar o produto.'
             ], 500);
         }
     }

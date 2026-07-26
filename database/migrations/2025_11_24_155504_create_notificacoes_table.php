@@ -21,21 +21,19 @@ return new class() extends Migration {
             $table->dateTimeTz('data_leitura')->nullable();
 
             $table
-                ->uuid('usuario_id')
-                ->foreignId('usuario_id')
-                ->constrained('usuarios')
-                ->cascadeOnUpdate()
-                ->cascadeOnDelete()
+            ->uuid('menu_id')
+            ->foreignId('menu_id')
+            ->nullable()
+            ->constrained('menus')
+            ->cascadeOnUpdate()
+            ->cascadeOnDelete()
             ;
 
-            $table
-                ->uuid('menu_id')
-                ->foreignId('menu_id')
+            $table->foreignUuid('usuario_id')
                 ->nullable()
-                ->constrained('menus')
+                ->constrained('usuarios')
                 ->cascadeOnUpdate()
-                ->cascadeOnDelete()
-            ;
+                ->cascadeOnDelete();
         });
     }
 

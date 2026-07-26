@@ -11,14 +11,19 @@ class AvariaResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'anexos' => AnexosAvariaResource::collection($this->whenLoaded('anexos')),
+            'motorista' => new MotoristaResource(
+                $this->whenLoaded('motorista'),
+                $this->data_emissao
+            ),
             'cliente' => new ClienteResource($this->whenLoaded('cliente')),
-            'notas_fiscais' => NotaFiscalAvariaResource::collection($this->whenLoaded('notasFiscais')),
-            'mapa' => new MapaResource($this->whenLoaded('mapa')),
             'status' => $this->status,
-            'usuario_responsavel_id' => $this->usuario_responsavel_id,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'data_emissao' => $this->data_emissao,
+            'aprovador' => new UsuarioResource($this->whenLoaded('aprovador')),
+            'data_aprovacao' => $this->data_aprovacao,
+            'motivo_reprovacao' => $this->motivo_reprovacao,
+            'nota_fiscal' => NotaFiscalResource::make($this->nota_fiscal),
+            'itens' => ItemAvariaResource::collection($this->whenLoaded('itens')),
+            'anexos' => $this->whenLoaded('anexos') ? AnexosAvariaResource::collection($this->anexos) : [],
         ];
     }
 }

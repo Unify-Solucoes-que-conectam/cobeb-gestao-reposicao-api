@@ -4,23 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessImportJob;
 use App\Models\ImportBatch;
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 class ImportController extends Controller
 {
     private const ALLOWED_TYPES = [
-        'filiais',
-        'tipos_pessoa',
-        'tipos_marca',
-        'embalagens',
-        'clusters',
-        'categorias',
-        'clientes',
         'produtos',
+        'clientes',
         'motoristas',
-        'notas_fiscais',
-        'produtos_nf',
+        'mapas',
+        'vendas_trocas'
     ];
 
     public function start(Request $request)
@@ -32,12 +28,13 @@ class ImportController extends Controller
 
         $validator = Validator::make($request->all(), [
             'type' => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
-            'file' => ['required', 'file', 'mimes:csv,xlsx,xls'],
+            'file' => ['required', 'file', 'mimes:csv,xlsx,xls', 'max:10240'],
         ], [
             'type.required' => 'Type is required.',
             'type.in' => 'Type is invalid.',
             'file.required' => 'File is required.',
             'file.mimes' => 'File must be CSV or Excel.',
+            'file.max' => 'File size must not exceed 10MB.',
         ]);
 
         if ($validator->fails()) {
@@ -47,29 +44,38 @@ class ImportController extends Controller
             ], 422);
         }
 
+        // Salva o arquivo no storage
         $path = $request->file('file')->store('imports');
 
-        $batch = ImportBatch::query()->create([
-            'user_id' => $user->id,
-            'type' => $request->input('type'),
-            'status' => 'pending',
-            'total_rows' => 0,
-            'processed_rows' => 0,
-            'percentage' => 0,
-            'last_log' => 'Queued',
-            'current_step' => 'queued',
-        ]);
+        try {
+            $batch = ImportBatch::query()->create([
+                'user_id' => $user->id,
+                'type' => $request->input('type'),
+                'status' => 'pending',
+                'total_rows' => 0,
+                'processed_rows' => 0,
+                'percentage' => 0,
+                'last_log' => 'Queued',
+                'current_step' => 'queued',
+            ]);
 
-        ProcessImportJob::dispatch($batch->id, $path, $batch->type, $user->id)
-            ->onQueue('imports');
+            // Dispara o Job na fila 'imports'
+            ProcessImportJob::dispatch($batch->id, $path, $batch->type)
+                ->onQueue('imports');
 
-        // Refresh so the response reflects any changes made by a sync queue driver
-        $batch->refresh();
+            return response()->json([
+                'success' => true,
+                'data' => $batch,
+            ]);
+        } catch (Exception $e) {
+            // Se der erro ao criar no banco ou na fila, remove o arquivo salvo
+            Storage::delete($path);
 
-        return response()->json([
-            'success' => true,
-            'data' => $batch,
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to enqueue import process: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function list(Request $request)

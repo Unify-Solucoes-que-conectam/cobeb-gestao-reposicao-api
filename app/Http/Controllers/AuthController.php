@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\MenuResource;
+use App\Http\Resources\UsuarioResource;
 use App\Models\Menu;
 use App\Models\Usuario;
 use App\Notifications\UserNotification;
@@ -15,45 +17,6 @@ use Illuminate\Validation\Rules\Password as RulesPassword;
 
 class AuthController extends Controller
 {
-    /**
-     * Monta array de dados do usuário para retorno na autenticação.
-     *
-     * @param  Usuario  $user  Usuário autenticado
-     * @return array Dados do usuário
-     */
-    private function userDataArray(Usuario $user): array
-    {
-        // 1. Monta os dados base
-        $userData = [
-            'id' => $user->id,
-            'nome' => $user->nome,
-            'cpf' => $user->cpf,
-            'role' => $user->role,
-            'primeiro_acesso' => $user->primeiro_acesso,
-        ];
-
-        // 2. Adiciona a lógica do mapa caso seja motorista
-        if ($user->role === 'motorista') {
-
-            // Busca o perfil de motorista usando o CPF do usuário
-            $motorista = \App\Models\Motorista::where('cpf', $user->cpf)->first();
-
-            if ($motorista) {
-                // Se achou o motorista, busca o mapa ativo
-                $mapaAtivo = \App\Models\Mapa::with('motorista')
-                    ->where('motorista_id', $motorista->id)
-                    ->where('status', 'ativo')
-                    ->first();
-
-                $userData['mapa'] = $mapaAtivo;
-            } else {
-                $userData['mapa'] = null;
-            }
-        }
-
-        // 3. Retorna o array completo
-        return $userData;
-    }
 
     /**
      * Gera e retorna um token único para o usuário, removendo tokens antigos.
@@ -64,9 +27,10 @@ class AuthController extends Controller
      */
     private function generateToken(Usuario $user, $tokenName = 'web_auth'): string
     {
+        $expiresAt = now()->endOfDay();
         $user->tokens()->where('name', $tokenName)->delete();
 
-        return $user->createToken($tokenName)->plainTextToken;
+        return $user->createToken($tokenName, ['*'], $expiresAt)->plainTextToken;
     }
 
     /**
@@ -109,37 +73,39 @@ class AuthController extends Controller
         $tokenName = (config('app.env') !== 'production' && str_starts_with($request->userAgent(), 'PostmanRuntime/')) ? 'postman_auth' : 'web_auth';
         $token = $this->generateToken($user, $tokenName);
 
-        // gerar uuid para a notificação
-        $notificationId = (string) Str::uuid();
+        // notificação apenas para usuários do monitoramento
+        if ($user->role === 'monitoramento') {
 
-        // notificação
-        $notification = [
-            'id' => $notificationId,
-            'titulo' => 'Bem-vindo ao nosso sistema de gestão, ' . ucwords(strtolower($user->nome)) . '!',
-            'mensagem' => 'Estamos felizes em tê-lo(a) conosco. Explore nossos recursos e aproveite ao máximo sua experiência.',
-            'tipo' => 'info',
-            'usuario_id' => $user->id,
-        ];
+            // gerar uuid para a notificação
+            $notificationId = (string) Str::uuid();
 
-        // notificação de boas vindas, só aparece se a notificação ainda não foi enviada
-        if (!$user->notificacoes()
-            ->where('titulo', $notification['titulo'])
-            ->where('mensagem', $notification['mensagem'])
-            ->where('tipo', $notification['tipo'])
-            ->exists()) {
-            // enviar notificação
-            $user->notify(new UserNotification($notification));
+            $notification = [
+                'id' => $notificationId,
+                'titulo' => 'Bem-vindo ao sistema de gestão de reposição, ' . ucwords(strtolower($user->nome)) . '!',
+                'mensagem' => 'Você está logado no sistema de monitoramento.',
+                'tipo' => 'info',
+            ];
+
+            // notificação de boas vindas, só aparece se a notificação ainda não foi enviada
+            if (!$user->notificacoes()
+                ->where('titulo', $notification['titulo'])
+                ->where('mensagem', $notification['mensagem'])
+                ->where('tipo', $notification['tipo'])
+                ->exists()) {
+                // enviar notificação
+                $user->notify(new UserNotification($notification));
+            }
         }
 
-        $menus = Menu::buildMenuTree(Menu::query()->get()->toArray());
+        $menus = Menu::with('subMenus')->where('menu_pai_id', null)->get();
 
         return response()->json([
             'success' => true,
             'message' => 'Login realizado com sucesso.',
             'data' => [
                 'token' => $token,
-                'usuario' => $this->userDataArray($user),
-                'menus' => $menus,
+                'usuario' => UsuarioResource::make($user->load('motorista', 'motorista.mapaAtual', 'motorista.filial')),
+                'menus' => MenuResource::collection($menus),
             ],
         ]);
     }
@@ -174,58 +140,6 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Usuário registrado com sucesso.',
         ]);
-    }
-
-    /**
-     * Retorna os dados do usuário logado (Check Me)
-     */
-    /**
-     * Retorna os dados do usuário logado (Check Me)
-     */
-    public function me(Request $request): \Illuminate\Http\JsonResponse
-    {
-        try {
-            $user = $request->user();
-            $menus = \App\Models\Menu::buildMenuTree(\App\Models\Menu::query()->get()->toArray());
-
-            // Pega os dados formatados do usuário gerados pelo seu método
-            $userData = $this->userDataArray($user);
-
-            // Verifica se a role do usuário é motorista
-            if ($user->role === 'motorista') {
-
-                // 1. Busca o perfil de motorista usando o CPF do usuário logado
-                $motorista = \App\Models\Motorista::where('cpf', $user->cpf)->first();
-
-                if ($motorista) {
-                    // 2. Se achou o motorista, busca o mapa ativo atrelado ao ID dele
-                    $mapaAtivo = \App\Models\Mapa::with('motorista')
-                        ->where('motorista_id', $motorista->id)
-                        ->where('status', 'ativo')
-                        ->first();
-
-                    $userData['mapa'] = $mapaAtivo;
-                } else {
-                    // Se por acaso não achar o motorista associado ao CPF, retorna nulo
-                    $userData['mapa'] = null;
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Dados do usuário autenticado',
-                'data' => [
-                    'usuario' => $userData,
-                    'menus' => $menus,
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao obter os dados do usuário autenticado',
-                'error' => $e->getMessage()
-            ], 500);
-        }
     }
 
     /**
@@ -311,6 +225,23 @@ class AuthController extends Controller
                 'success' => false,
                 'message' => 'Erro ao alterar a senha: ' . $e->getMessage()
             ]);
+        }
+    }
+
+    public function checkSession(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Sessão válida.',
+            ]);
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sessão inválida ou expirada.',
+            ], 401);
         }
     }
 }

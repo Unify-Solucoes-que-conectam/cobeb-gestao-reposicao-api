@@ -17,12 +17,11 @@ class Produto extends Model
 
   protected $fillable = [
     'codigo',
+    'ean',
     'descricao',
-    'valor_unitario',
+    'preco_unitario',
     'tipo_marca_id',
     'embalagem_id',
-    'ean',
-    'usuario_responsavel_id',
   ];
 
   protected $casts = [
@@ -37,10 +36,5 @@ class Produto extends Model
   public function embalagem()
   {
     return $this->belongsTo(Embalagem::class);
-  }
-
-  public function usuario()
-  {
-    return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
   }
 }

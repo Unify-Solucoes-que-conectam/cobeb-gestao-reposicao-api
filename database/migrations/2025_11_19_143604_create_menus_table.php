@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('rota')->nullable();
             $table->integer('ordem')->default(0);
             $table->uuid('menu_pai_id')->nullable();
-            $table->uuid('usuario_responsavel_id')->nullable();
             $table->timestamps();
         });
     }

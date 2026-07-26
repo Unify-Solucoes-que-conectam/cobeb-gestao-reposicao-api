@@ -2,31 +2,28 @@
 
 namespace App\Notifications;
 
-use App\Contracts\DatabaseNotifiable;
-use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Broadcasting\PrivateChannel;
 
-class UserNotification extends Notification implements DatabaseNotifiable, ShouldQueue
+class UserNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $data; // Mudado de protected para public para serialização
+    public array $data;
 
     /**
-     * Create a new notification instance.
+     * Cria uma nova instância da notificação.
      */
-    public function __construct(mixed $data)
+    public function __construct(array $data)
     {
         $this->data = $data;
     }
 
     /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
+     * Define por onde a notificação será entregue (Banco + WebSocket).
      */
     public function via(object $notifiable): array
     {
@@ -34,47 +31,52 @@ class UserNotification extends Notification implements DatabaseNotifiable, Shoul
     }
 
     /**
-     * Get the array representation of the notification.
-     *
-     * @return array<string, mixed>
+     * Dados salvos na tabela de notificações do banco.
      */
     public function toDatabase(object $notifiable): array
     {
-        return $this->data;
+        return [
+            'titulo'     => $this->data['titulo'] ?? null,
+            'mensagem'   => $this->data['mensagem'],
+            'tipo'       => $this->data['tipo'] ?? 'info',
+            'link'       => $this->data['link'] ?? null,
+            'menu_id'    => $this->data['menu_id'] ?? null,
+            'data_envio' => now(),
+        ];
     }
 
     /**
-     * Get the broadcastable representation of the notification.
-     *
-     * @return array<string, mixed>
+     * Dados transmitidos via WebSocket/Reverb para o app.
      */
-    public function toBroadcast()
+    public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        // Defina o id da notificação com seu valor customizado
-        $this->id = $this->data['id'];
-
         return new BroadcastMessage([
-            'id' => $this->data['id'],
-            'titulo' => $this->data['titulo'] ?? null,
-            'mensagem' => $this->data['mensagem'],
-            'tipo' => $this->data['tipo'],
-            'data_envio' => now(),
-            'lida' => false,
-            'link' => $this->data['link'] ?? null,
+            'id'         => $this->data['id'] ?? null, // ID da notificação gerado pelo Laravel
+            'titulo'     => $this->data['titulo'] ?? null,
+            'mensagem'   => $this->data['mensagem'],
+            'tipo'       => $this->data['tipo'] ?? 'info',
+            'link'       => $this->data['link'] ?? null,
+            'menu_id'    => $this->data['menu_id'] ?? null,
+            'data_envio' => now()->toIso8601String(),
         ]);
     }
 
-    public function broadcastOn()
+    /**
+     * Define o canal PRIVADO do usuário que receberá a mensagem.
+     */
+    public function broadcastOn(): PrivateChannel
     {
-        return [new PrivateChannel('notifications.' . $this->data['usuario_id'])];
+        // Pega o ID do usuário diretamente do destinatário ($notifiable) ou do $data
+        $userId = $this->data['usuario_id'] ?? null;
+
+        return new PrivateChannel('notifications.' . $userId);
     }
 
     /**
-     * Opcional: Define o nome do evento para o frontend ouvir.
-     * Padrão: Illuminate\Notifications\Events\BroadcastNotificationCreated
+     * Nome do evento escutado pelo Frontend/Mobile.
      */
-    public function broadcastType(): string
+    public function broadcastAs(): string
     {
-        return 'notification.created';
+        return 'user.notification';
     }
 }

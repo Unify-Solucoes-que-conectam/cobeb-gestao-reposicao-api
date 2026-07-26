@@ -11,9 +11,10 @@ return new class extends Migration
     Schema::create('mapas', function (Blueprint $table) {
       $table->uuid('id')->primary();
       $table->string('codigo')->unique();
-      $table->string('status')->default('ativo');
       $table->foreignUuid('motorista_id')->nullable()->constrained('motoristas')->nullOnDelete();
-      $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+      $table->foreignUuid('filial_id')->nullable()->constrained('filiais')->nullOnDelete();
+      $table->dateTimeTz('data_entrega');
+      $table->string('placa');
       $table->timestamps();
     });
   }

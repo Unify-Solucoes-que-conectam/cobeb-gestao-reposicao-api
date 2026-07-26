@@ -17,6 +17,11 @@ class ClienteResource extends JsonResource
         return [
             'id' => $this->id,
 
+            // aqui carregamos os relacionamentos
+            'filial' => FilialResource::make($this->whenLoaded('filial')),
+            'categoria' => CategoriaResource::make($this->whenLoaded('categoria')),
+            'contatos' => ClienteTelefoneResource::collection($this->whenLoaded('contatos')),
+
             // Aqui carregamos os objetos
             'codigo' => $this->codigo,
             'documento' => $this->documento,
@@ -30,24 +35,9 @@ class ClienteResource extends JsonResource
             'cep' => $this->cep,
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
-            'categoria' => $this->categoria,
-            'tipo_pessoa' => $this->tipoPessoa,
-            'pdv_ativo' => $this->pdv_ativo,
-            'contatos' => $this->contatos,
-
-            // retorna quantidade de notas fiscais se houver
-            'qntd_notas_fiscais' => $this->whenLoaded('notasFiscais', function () {
-                return $this->notasFiscais->count();
-            }),
-            // retorna quantidade de produtos associados às notas fiscais se houver
-            'qntd_produtos' => $this->whenLoaded('notasFiscais', function () {
-                return $this->notasFiscais->sum(function ($nota) {
-                    return $nota->produtos->count();
-                });
-            }),
-
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'status' => $this->status,
+            'tipo_pessoa' => $this->tipo_pessoa,
+            'quantidade_notas' => $this->whenCounted('notasFiscais'),
         ];
     }
 }

@@ -21,14 +21,12 @@ class ProcessImportJob implements ShouldQueue
     private string $batchId;
     private string $path;
     private string $type;
-    private string $userId;
 
-    public function __construct(string $batchId, string $path, string $type, string $userId)
+    public function __construct(string $batchId, string $path, string $type)
     {
         $this->batchId = $batchId;
         $this->path = $path;
         $this->type = $type;
-        $this->userId = $userId;
     }
 
     public function handle(): void
@@ -72,7 +70,7 @@ class ProcessImportJob implements ShouldQueue
             ]);
             event(new ImportProgressUpdated($batch->fresh()));
 
-            $import = new GenericImport($this->batchId, $this->userId, $this->type, $totalRows, 10);
+            $import = new GenericImport($this->batchId, $this->type, $totalRows);
             Excel::import($import, $fullPath);
 
             $errorCount = $import->getErrorCount();

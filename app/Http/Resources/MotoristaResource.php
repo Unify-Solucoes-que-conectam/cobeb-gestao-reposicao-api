@@ -7,29 +7,41 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class MotoristaResource extends JsonResource
 {
+    protected $dataEntrega;
+
+    // Construtor para receber a data da avaria (opcional)
+    public function __construct($resource, $dataEntrega = null)
+    {
+        parent::__construct($resource);
+        $this->dataEntrega = $dataEntrega;
+    }
+
     /**
      * Transform the resource into an array.
      *
      * @return array<string, mixed>
      */
-    public function toArray(Request $request): array
+    public function toArray(Request $request, $dataEmissao = null): array
     {
+
+        $esconderCampos = $request->routeIs(['auth.login']);
+
+        $mapa = ($this->relationLoaded('mapas') && $this->dataEntrega)
+            ? $this->mapas->firstWhere('data_entrega', $this->dataEntrega)
+            : null;
+
         return [
             'id' => $this->id,
             'codigo' => $this->codigo,
-            'nome' => $this->nome,
-            'cpf' => $this->cpf,
+            'nome' => $this->when(!$esconderCampos, $this->usuario?->nome),
+            'cpf'  => $this->when(!$esconderCampos, $this->usuario?->cpf),
             'status' => $this->status,
-            'celular_corporativo' => $this->celular_corporativo,
             'data_admissao' => $this->data_admissao,
+            'data_inativacao' => $this->data_inativacao,
 
-            // Aqui carregamos os objetos, mas note que NÃO incluímos filial_id e cluster_id
-            'filial' => $this->whenLoaded('filial'),
-            'cluster' => $this->whenLoaded('cluster'),
-
-            'usuario_responsavel_id' => $this->usuario_responsavel_id,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'mapa' => $this->whenLoaded('mapaAtual') ? new MapaResource($this->mapaAtual) : ($mapa ? new MapaResource($mapa) : null),
+            'filial' => new FilialResource($this->whenLoaded('filial')),
+            'cluster' => new ClusterResource($this->whenLoaded('cluster')),
         ];
     }
 }

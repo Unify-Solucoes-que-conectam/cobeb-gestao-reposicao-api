@@ -10,10 +10,14 @@ return new class extends Migration
     {
         Schema::create('avarias', function (Blueprint $table) {
             $table->string('id', 8)->primary();
+            $table->string('id', 8)->primary();
             $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
-            $table->foreignUuid('mapa_id')->nullable()->constrained('mapas')->nullOnDelete();
-            $table->enum('status', ['pendente', 'reprovada', 'aprovada'])->default('pendente');
-            $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+            $table->foreignUuid('motorista_id')->nullable()->constrained('motoristas')->nullOnDelete();
+            $table->enum('status', ['pendente', 'aguardando_aprovacao', 'reprovada', 'aprovada', 'trocada'])->default('pendente');
+            $table->dateTimeTz('data_emissao')->useCurrent();
+            $table->foreignUuid('aprovador_id')->nullable()->constrained('usuarios')->nullOnDelete();
+            $table->dateTimeTz('data_aprovacao')->nullable();
+            $table->string('motivo_reprovacao')->nullable();
             $table->timestamps();
         });
     }

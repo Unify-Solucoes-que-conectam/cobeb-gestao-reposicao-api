@@ -14,6 +14,10 @@ class EmbalagemResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        return parent::toArray($request);
+        return [
+            'id' => $this->id,
+            'descricao' => $this->descricao,
+            'quantidade' => $this->quantidade,
+        ];
     }
 }

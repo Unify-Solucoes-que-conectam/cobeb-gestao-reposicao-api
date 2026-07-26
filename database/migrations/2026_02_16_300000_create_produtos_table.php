@@ -11,12 +11,11 @@ return new class extends Migration
     Schema::create('produtos', function (Blueprint $table) {
       $table->uuid('id')->primary();
       $table->string('codigo')->unique();
+      $table->string('ean')->nullable();
       $table->string('descricao')->nullable();
-      $table->decimal('valor_unitario', 10, 2)->nullable();
+      $table->decimal('preco_unitario', 12, 2)->nullable();
       $table->foreignUuid('tipo_marca_id')->nullable()->constrained('tipos_marca')->nullOnDelete();
       $table->foreignUuid('embalagem_id')->nullable()->constrained('embalagens')->nullOnDelete();
-      $table->string('ean')->nullable();
-      $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
       $table->timestamps();
     });
   }

@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::create('tipos_avaria', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            $table->string('codigo')->unique();
             $table->string('nome');
             $table->string('descricao');
-            $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
             $table->timestamps();
         });
     }

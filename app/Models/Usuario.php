@@ -38,18 +38,14 @@ class Usuario extends Authenticatable
 
     protected $table = 'usuarios';
 
-    protected $casts = [
-        'status' => 'bool',
-    ];
-
     protected $hidden = [
         'senha',
     ];
 
     protected $fillable = [
         'nome',
-        'senha',
         'cpf',
+        'senha',
         'role',
         'primeiro_acesso',
     ];
@@ -138,5 +134,10 @@ class Usuario extends Authenticatable
     public function menus_favoritos()
     {
         return $this->belongsToMany(Menu::class, 'usuarios_menus_favoritos', 'usuario_id', 'menu_id');
+    }
+
+    public function motorista()
+    {
+        return $this->hasOne(Motorista::class, 'usuario_id');
     }
 }

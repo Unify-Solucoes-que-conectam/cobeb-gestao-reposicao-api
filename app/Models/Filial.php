@@ -20,11 +20,23 @@ class Filial extends Model
     protected $fillable = [
         'codigo',
         'descricao',
-        'usuario_responsavel_id',
     ];
 
-    public function usuario()
+    // --- Validation Rules ---
+    public static function createRules(): array
     {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
+        return [
+            'codigo' => ['required', 'unique:filiais,codigo'],
+            'descricao' => ['required'],
+        ];
+    }
+
+    public static function messages(): array
+    {
+        return [
+            'codigo.required' => 'O código da filial é obrigatório.',
+            'codigo.unique' => 'O código da filial já está cadastrado.',
+            'descricao.required' => 'A descrição da filial é obrigatória.',
+        ];
     }
 }
