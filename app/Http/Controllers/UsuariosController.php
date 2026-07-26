@@ -184,6 +184,11 @@ class UsuariosController extends Controller
 
             // atualizar senha do usuário
             $usuario->senha = $request->senha;
+
+            // alterar se for primeiro acesso
+            if ($usuario->primeiro_acesso) {
+                $usuario->primeiro_acesso = false;
+            }
             $usuario->save();
 
             return response()->json([

@@ -124,4 +124,16 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Whatsapp Test Number
+    |--------------------------------------------------------------------------
+    |
+    | This is the phone number that will be used for WhatsApp notifications
+    | when the application is not in production. It allows you to test
+    | WhatsApp messaging without contacting real customers.
+    |
+    */
+
+    'whatsapp_test_number' => env('WHATSAPP_PHONE_NUMBER', '37999999999'),
 ];
