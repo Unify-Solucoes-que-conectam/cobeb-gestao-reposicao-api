@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Resources\AvariaResource;
+use App\Jobs\ProcessarRelatorioAvariaJob;
 use App\Models\AnexosAvaria;
 use App\Models\Avaria;
 use App\Models\ProdutoNotaFiscal;
@@ -15,7 +16,6 @@ use App\Support\WhatsAppService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class AvariasController extends Controller
 {
@@ -186,26 +186,31 @@ class AvariasController extends Controller
             });
 
             if (!$resultado->isEmpty()) {
-                // $resultado contém a coleção de Avarias geradas/atualizadas
+
                 $avarias = $resultado;
 
                 if ($avarias->isEmpty()) {
                     return response()->json(['message' => 'Nenhuma avaria processada.'], 400);
                 }
 
-                // 2. Pegar os dados gerais (O cliente é o mesmo para todas as avarias dessa requisição)
                 $avariaPrincipal = $avarias->first()->load([
                     'itens.produtoNotaFiscal.notaFiscal',
                     'itens.tipoAvaria',
                     'cliente',
                     'cliente.contatos'
                 ]);
-                $clienteModel = $avariaPrincipal->cliente;
 
+                $clienteModel = $avariaPrincipal->cliente;
                 $enderecoCompleto = $clienteModel->endereco . ', ' . $clienteModel->bairro . ', ' . $clienteModel->cidade . ' - ' . $clienteModel->uf . ', CEP: ' . $clienteModel->cep;
                 $contatoCliente = $clienteModel->contatos->where('isWhatsapp', true)->first() ?? null;
 
-                // Mapeando os dados do cliente (Ajuste os nomes das colunas conforme seu banco de dados)
+                if (!$contatoCliente) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Avaria registrada/atualizada, mas não foi possível enviar relatório via WhatsApp. Contato do cliente não cadastrado.',
+                    ], 404);
+                }
+
                 $tipoDocumento = Str::length($clienteModel->documento ?? '') === 11 ? 'cpf' : 'cnpj';
 
                 $cliente = (object)[
@@ -215,62 +220,10 @@ class AvariasController extends Controller
                     'telefone' => $contatoCliente->numero ?? 'N/A'
                 ];
 
-                // Gerando um número de protocolo único para este documento
                 $protocolo = 'AVR-' . $avariaPrincipal->id;
 
-                // 3. Montando o array de dados para a View
-                $data = [
-                    'protocolo' => $protocolo,
-                    'cliente'   => $cliente,
-                    'avarias'   => $avarias // Passamos a coleção completa para o Blade
-                ];
-
-                // gerar relatório de avarias
-                $pdf = Pdf::loadView('pdf.avarias', $data);
-
-                // Define um nome único para o arquivo
-                $nomeArquivo = 'relatorio_' . time() . '.pdf';
-
-                // Caminho onde será salvo: storage/app/public/documentos/
-                $caminho = 'documentos/' . $nomeArquivo;
-
-                // Salva o PDF no disco "public"
-                Storage::disk('public')->put($caminho, $pdf->output());
-
-                $whatsapp = new WhatsAppService();
-
-                // retorna Bom dia, Boa tarde ou Boa noite dependendo do horário do envio
-                $horario = now()->format('H');
-                if ($horario >= 5 && $horario < 12) {
-                    $saudacao = 'Bom dia';
-                } elseif ($horario >= 12 && $horario < 18) {
-                    $saudacao = 'Boa tarde';
-                } else {
-                    $saudacao = 'Boa noite';
-                }
-
-                if ($contatoCliente) {
-                    $mediaSended = $whatsapp->sendMedia(
-                        $contatoCliente->numero,
-                        'document',
-                        'application/pdf',
-                        $saudacao . ' ' . $cliente->nome . ', foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.',
-                        base64_encode($pdf->output()), // base64 do PDF
-                        $nomeArquivo
-                    );
-
-                    if (!$mediaSended) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Avaria registrada/atualizada, mas falha ao enviar relatório via WhatsApp.'
-                        ], 500);
-                    }
-                } else {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Avaria registrada/atualizada, mas não foi possível enviar relatório via WhatsApp. Contato do cliente não cadastrado.',
-                    ], 404);
-                }
+                // Dispara o Job para processar o PDF e o WhatsApp em segundo plano
+                ProcessarRelatorioAvariaJob::dispatch($avarias, $cliente, $contatoCliente, $protocolo);
             }
 
             return response()->json([
