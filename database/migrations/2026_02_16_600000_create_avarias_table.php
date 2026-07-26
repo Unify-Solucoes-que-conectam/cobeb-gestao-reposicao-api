@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('avarias', function (Blueprint $table) {
             $table->string('id', 8)->primary();
+            $table->string('id', 8)->primary();
             $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
             $table->foreignUuid('motorista_id')->nullable()->constrained('motoristas')->nullOnDelete();
             $table->enum('status', ['pendente', 'aguardando_aprovacao', 'reprovada', 'aprovada', 'trocada'])->default('pendente');

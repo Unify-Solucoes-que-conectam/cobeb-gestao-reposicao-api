@@ -56,6 +56,7 @@ class AvariasController extends Controller
 
             // 4. Eager Loading e Retorno
             $avarias = $query->with([
+                'anexos',
                 'cliente',
                 'motorista.mapas',
                 'motorista.cluster',
@@ -303,6 +304,7 @@ class AvariasController extends Controller
      */
     public function updateStatus(Request $request, string $id)
     {
+        // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
             'status' => ['required', 'string', 'in:aprovada,reprovada,aguardando_aprovacao,trocada'],
