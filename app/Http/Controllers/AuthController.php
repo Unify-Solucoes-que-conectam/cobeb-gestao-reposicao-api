@@ -96,7 +96,7 @@ class AuthController extends Controller
             }
         }
 
-        $menus = Menu::with('subMenus')->get();
+        $menus = Menu::with('subMenus')->whereNull('menu_pai_id')->get();
 
         return response()->json([
             'success' => true,
