@@ -319,7 +319,6 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
     {
         $codigo = trim((string) Arr::get($data, 'nro_do_mapa'));
         $codMotorista = trim((string) Arr::get($data, 'motorista'));
-        $codFilial = trim((string) Arr::get($data, 'unb'));
         $dataEntrega = trim((string) Arr::get($data, 'data_entrega'));
         $placa = trim((string) Arr::get($data, 'placa'));
         $clientes = trim((string) Arr::get($data, 'clientes'));
@@ -332,7 +331,6 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         $mapa = Mapa::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $codFilial),
                 'motorista_id' => $this->resolveFk(Motorista::class, 'codigo', $codMotorista),
                 'data_entrega' => $this->toDate($dataEntrega),
                 'placa'        => $placa,

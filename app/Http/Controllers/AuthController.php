@@ -27,10 +27,9 @@ class AuthController extends Controller
      */
     private function generateToken(Usuario $user, $tokenName = 'web_auth'): string
     {
-        $expiresAt = now()->endOfDay();
         $user->tokens()->where('name', $tokenName)->delete();
 
-        return $user->createToken($tokenName, ['*'], $expiresAt)->plainTextToken;
+        return $user->createToken($tokenName)->plainTextToken;
     }
 
     /**
@@ -97,7 +96,7 @@ class AuthController extends Controller
             }
         }
 
-        $menus = Menu::with('subMenus')->where('menu_pai_id', null)->get();
+        $menus = Menu::with('subMenus')->get();
 
         return response()->json([
             'success' => true,
@@ -225,23 +224,6 @@ class AuthController extends Controller
                 'success' => false,
                 'message' => 'Erro ao alterar a senha: ' . $e->getMessage()
             ]);
-        }
-    }
-
-    public function checkSession(Request $request)
-    {
-        $user = $request->user();
-
-        if ($user) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Sessão válida.',
-            ]);
-        } else {
-            return response()->json([
-                'success' => false,
-                'message' => 'Sessão inválida ou expirada.',
-            ], 401);
         }
     }
 }

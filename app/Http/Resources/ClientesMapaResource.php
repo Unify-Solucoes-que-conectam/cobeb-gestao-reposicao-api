@@ -14,6 +14,9 @@ class ClientesMapaResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        return new ClienteResource($this->whenLoaded('cliente'))->toArray($request);
+        return [
+            'id' => $this->id,
+            'codigo' => $this->codigo,
+        ];
     }
 }

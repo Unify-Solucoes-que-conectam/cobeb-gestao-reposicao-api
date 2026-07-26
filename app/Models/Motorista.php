@@ -95,7 +95,7 @@ class Motorista extends Model
 
     public function mapaAtual()
     {
-        return $this->hasOne(Mapa::class, 'motorista_id')->where('data_entrega', '=', today());
+        return $this->hasOne(Mapa::class, 'motorista_id')->where('data_entrega', now()->toDateString());
     }
 
     public function filial()
