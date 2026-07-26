@@ -12,7 +12,7 @@ return new class extends Migration
       $table->uuid('id')->primary();
       $table->string('codigo')->unique();
       $table->foreignUuid('motorista_id')->nullable()->constrained('motoristas')->nullOnDelete();
-      $table->foreignUuid('filial_id')->nullable()->constrained('filials')->nullOnDelete();
+      $table->foreignUuid('filial_id')->nullable()->constrained('filiais')->nullOnDelete();
       $table->dateTimeTz('data_entrega');
       $table->string('placa');
       $table->timestamps();
