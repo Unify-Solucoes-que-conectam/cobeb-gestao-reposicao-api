@@ -239,12 +239,22 @@ class AvariasController extends Controller
 
                 $whatsapp = new WhatsAppService();
 
+                // retorna Bom dia, Boa tarde ou Boa noite dependendo do horário do envio
+                $horario = now()->format('H');
+                if ($horario >= 5 && $horario < 12) {
+                    $saudacao = 'Bom dia';
+                } elseif ($horario >= 12 && $horario < 18) {
+                    $saudacao = 'Boa tarde';
+                } else {
+                    $saudacao = 'Boa noite';
+                }
+
                 if ($contatoCliente) {
                     $mediaSended = $whatsapp->sendMedia(
                         $contatoCliente->numero,
                         'document',
                         'application/pdf',
-                        'Olá, segue o relatório de avarias.',
+                        $saudacao . ' ' . $cliente->nome . ', foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.',
                         base64_encode($pdf->output()), // base64 do PDF
                         $nomeArquivo
                     );
