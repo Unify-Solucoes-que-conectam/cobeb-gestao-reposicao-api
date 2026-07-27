@@ -411,22 +411,26 @@ class AvariasController extends Controller
                 ], 500);
             }
 
-            $clientePhone = config('app.env') === 'production'
-                ? $clientePhone
-                : config('app.whatsapp_test_number');
+            if ($clientePhone && in_array($request->status, ['aprovada', 'reprovada'])) {
 
-            $mensagem = $request->status === 'aprovada'
-                ? "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *aprovada* pela nossa equipe.\n\nO processo de substituição dos produtos avariados já está em andamento. Em caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*"
-                : "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *reprovada* pela nossa equipe.\n\nMotivo: {$avaria->motivo_reprovacao}\n\nEm caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*";
-            $sent = $whatsapp->sendMessage($clientePhone, $mensagem);
+                // validação para enviar mensagem de WhatsApp apenas em produção, caso contrário envia para número de teste
+                $clientePhone = config('app.env') === 'production'
+                    ? $clientePhone
+                    : config('app.whatsapp_test_number');
 
-            if (!$sent) {
-                Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
-                return response()->json([
-                    'success' => false,
-                    'message' => "Avaria atualizada para {$request->status}, mas falha ao enviar notificação via WhatsApp.",
-                    'error_code' => 'WHATSAPP_NOTIFICATION_FAILED'
-                ], 500);
+                $mensagem = $request->status === 'aprovada'
+                    ? "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *aprovada* pela nossa equipe.\n\nO processo de substituição dos produtos avariados já está em andamento. Em caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*"
+                    : "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *reprovada* pela nossa equipe.\n\nMotivo: {$avaria->motivo_reprovacao}\n\nEm caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*";
+                $sent = $whatsapp->sendMessage($clientePhone, $mensagem);
+
+                if (!$sent) {
+                    Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Avaria atualizada para {$request->status}, mas falha ao enviar notificação via WhatsApp.",
+                        'error_code' => 'WHATSAPP_NOTIFICATION_FAILED'
+                    ], 500);
+                }
             }
 
             return response()->json([
