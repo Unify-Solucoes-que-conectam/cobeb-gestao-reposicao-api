@@ -21,7 +21,7 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
     protected $protocolo;
     protected $mensagem;
 
-    public function __construct($avarias, $cliente, $contatoCliente, $protocolo, $mensagem)
+    public function __construct($avarias, $cliente, $contatoCliente, $protocolo, $mensagem = null)
     {
         $this->avarias = $avarias;
         $this->cliente = $cliente;
@@ -63,7 +63,7 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
                 $this->contatoCliente->numero,
                 'document',
                 'application/pdf',
-                !isset($this->mensagem) ? $this->mensagem : $saudacao . ' *' . $this->cliente->nome . '*! ' . "\n\n" . 'Foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.' . "\n\n" . 'Logo você receberá uma mensagem de aprovação!',
+                isset($this->mensagem) ? $this->mensagem : $saudacao . ' *' . $this->cliente->nome . '*! ' . "\n\n" . 'Foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.' . "\n\n" . 'Logo você receberá uma mensagem de aprovação!',
                 base64_encode($pdf->output()),
                 $nomeArquivo
             );

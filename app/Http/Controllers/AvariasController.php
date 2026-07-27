@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\GlobalEvent;
 use App\Http\Resources\AvariaResource;
 use App\Http\Resources\ItemAvariaResource;
 use App\Jobs\ProcessarRelatorioAvariaJob;
@@ -205,6 +206,7 @@ class AvariasController extends Controller
 
                 return collect($avariasProcessadas);
             });
+
             return response()->json([
                 'success' => true,
                 'message' => 'Avaria registrada/atualizada com sucesso.',
@@ -320,6 +322,16 @@ class AvariasController extends Controller
             $avaria->save(); //
 
             if ($request->status === 'aguardando_aprovacao') {
+
+                event(new GlobalEvent([
+                    'titulo' => 'Nova avaria registrada',
+                    'mensagem' => 'Uma nova avaria foi registrada/atualizada para o cliente: ' . $avaria->cliente->nome_fantasia,
+                    'tipo' => 'info',
+                    'data_envio' => now(),
+                    'lida' => false,
+                    'link' => null,
+                ]));
+
                 $avarias = Avaria::where('cliente_id', $avaria->cliente_id)->where('data_emissao', $avaria->data_emissao)->get();
 
                 $avariaPrincipal = $avarias->first()->load([
