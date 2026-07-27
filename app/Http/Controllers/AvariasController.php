@@ -420,7 +420,7 @@ class AvariasController extends Controller
 
                 $mensagem = $request->status === 'aprovada'
                     ? "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *aprovada* pela nossa equipe.\n\nO processo de substituição dos produtos avariados já está em andamento. Em caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*"
-                    : "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *reprovada* pela nossa equipe.\n\nMotivo: {$avaria->motivo_reprovacao}\n\nEm caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*";
+                    : "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *reprovada* pela nossa equipe.\n\n*Motivo:* _{$avaria->motivo_reprovacao}_\n\nEm caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*";
                 $sent = $whatsapp->sendMessage($clientePhone, $mensagem);
 
                 if (!$sent) {
