@@ -15,13 +15,15 @@ class MotoristasController extends Controller
     {
 
         // consultar dados dos motoristas e filtrar por nome ou cpf se os parâmetros forem fornecidos
-        $query = Motorista::query();
+        $query = Motorista::query()->with(['usuario']);
 
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($query) use ($search) {
-                $query->where('nome', 'like', '%' . $search . '%')
-                    ->orWhere('cpf', 'like', '%' . $search . '%');
+                $query->orWhereHas('usuario', function ($query) use ($search) {
+                    $query->where('nome', 'like', '%' . $search . '%')
+                        ->orWhere('cpf', 'like', '%' . $search . '%');
+                });
             });
         }
 
