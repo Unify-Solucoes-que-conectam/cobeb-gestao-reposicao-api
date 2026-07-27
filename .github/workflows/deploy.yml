@@ -11,11 +11,9 @@ jobs:
       - name: 🚀 Deploy Produção via Coolify
         if: github.ref == 'refs/heads/main'
         run: |
-          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_PROD }}' \
-          --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
+          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_PROD }}'
 
       - name: 🧪 Deploy Homologação via Coolify
         if: github.ref == 'refs/heads/develop'
         run: |
-          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_STAGING }}' \
-          --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
+          curl --request GET '${{ secrets.COOLIFY_WEBHOOK_STAGING }}'
