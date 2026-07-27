@@ -61,7 +61,7 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
                 $this->contatoCliente->numero,
                 'document',
                 'application/pdf',
-                $saudacao . ' ' . $this->cliente->nome . ', foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.',
+                $saudacao . ' ' . $this->cliente->nome . ', foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.' . "\n" . 'Logo você receberá uma mensagem de aprovação!',
                 base64_encode($pdf->output()),
                 $nomeArquivo
             );

@@ -22,7 +22,7 @@ class ProdutosNotaFiscalResource extends JsonResource
         return array_merge($produtoData, [
             'id' => $this->id,
             'quantidade' => $this->quantidade,
-            'quantidade_avariada' => $this->quantidade_avariada,
+            'quantidade_avariada' => $this->quantidade_avariada ?? 0,
             'valor_total' => $this->valor_total,
         ]);
     }
