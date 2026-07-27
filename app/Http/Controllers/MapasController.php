@@ -85,8 +85,6 @@ class MapasController extends Controller
                     }
                 ])
                 ->get();
-                ])
-                ->get();
 
             return response()->json([
                 'success' => true,

@@ -7,7 +7,6 @@ use App\Jobs\ProcessarRelatorioAvariaJob;
 use App\Models\AnexosAvaria;
 use App\Models\Avaria;
 use App\Models\ProdutoNotaFiscal;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,11 +23,6 @@ class AvariasController extends Controller
         try {
             $query = Avaria::query();
 
-            if ($request->has('search')) {
-
-                // consultar pelo nome ou código do cliente
-                $query->orWhereHas('cliente', function ($q) use ($request) {
-                    $q->where('nome_fantasia', 'like', '%' . $request->search . '%')->orWhere('codigo', 'like', '%' . $request->search . '%');
             if ($request->has('search')) {
 
                 // consultar pelo nome ou código do cliente
@@ -352,15 +346,12 @@ class AvariasController extends Controller
             'status' => ['required', 'string', 'in:aprovada,reprovada,enviada,trocada'],
         ], [
             'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.'
-            'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.'
         ]);
 
         try {
             // 2. Busca a avaria pelo ID
             $avaria = Avaria::findOrFail($id);
 
-            // 3. Regra de negócio: só pode alterar se estiver 'pendente'
-            if (strtolower($avaria->status) !== 'pendente') {
             // 3. Regra de negócio: só pode alterar se estiver 'pendente'
             if (strtolower($avaria->status) !== 'pendente') {
                 return response()->json([
@@ -383,22 +374,14 @@ class AvariasController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => "Avaria {$request->status} com sucesso, mas falha ao enviar notificação via WhatsApp."
-                    'message' => "Avaria {$request->status} com sucesso, mas falha ao enviar notificação via WhatsApp."
                 ], 500);
             }
 
             return response()->json([
                 'success' => true,
                 'message' => "Avaria {$request->status} com sucesso, o cliente foi notificado via WhatsApp.",
-                'message' => "Avaria {$request->status} com sucesso, o cliente foi notificado via WhatsApp.",
                 'data' => $avaria
             ]);
-        } catch (ModelNotFoundException $e) {
-            // Caso o ID (UUID) enviado não exista no banco
-            return response()->json([
-                'success' => false,
-                'message' => 'Avaria não encontrada.'
-            ], 404);
         } catch (\Exception $e) {
             // Tratamento de erros gerais
             return response()->json([
