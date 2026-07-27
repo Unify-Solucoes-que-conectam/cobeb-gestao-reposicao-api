@@ -52,7 +52,7 @@ return [
     |
     */
 
-    'url' => env('APP_URL', 'http://localhost'),
+    'url' => env('APP_URL', 'http://localhost:8000'),
     'public_url' => env('PUBLIC_APP_URL', 'http://127.0.0.1:8000'),
 
     /*
@@ -123,17 +123,4 @@ return [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Whatsapp Test Number
-    |--------------------------------------------------------------------------
-    |
-    | This is the phone number that will be used for WhatsApp notifications
-    | when the application is not in production. It allows you to test
-    | WhatsApp messaging without contacting real customers.
-    |
-    */
-
-    'whatsapp_test_number' => env('WHATSAPP_PHONE_NUMBER', '37999999999'),
 ];

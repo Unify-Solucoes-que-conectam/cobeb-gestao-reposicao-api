@@ -365,7 +365,7 @@ class AvariasController extends Controller
 
                 // Dispara o Job para processar o PDF e o WhatsApp em segundo plano
                 ProcessarRelatorioAvariaJob::dispatch($avarias, $cliente, $contatoCliente, $protocolo);
-                
+
             }
 
             // Enviar via WhatsApp
@@ -425,11 +425,6 @@ class AvariasController extends Controller
             }
 
             if ($clientePhone && in_array($request->status, ['aprovada', 'reprovada'])) {
-
-                // validação para enviar mensagem de WhatsApp apenas em produção, caso contrário envia para número de teste
-                $clientePhone = config('app.env') === 'production'
-                    ? $clientePhone
-                    : config('app.whatsapp_test_number');
 
                 $mensagem = $request->status === 'aprovada'
                     ? "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *aprovada* pela nossa equipe.\n\nO processo de substituição dos produtos avariados já está em andamento. Em caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*"
