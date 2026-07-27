@@ -6,6 +6,7 @@ use App\Events\ImportProgressUpdated;
 use App\Imports\CountRowsImport;
 use App\Imports\GenericImport;
 use App\Models\ImportBatch;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -94,6 +95,35 @@ class ProcessImportJob implements ShouldQueue
                         ? "Completed: {$successCount} imported, {$errorCount} errors"
                         : "Import completed — {$successCount} rows imported",
                 ]);
+
+                if ($this->type === 'vendas_trocas' && !empty($import->getTrocas())) {
+
+                    $trocas = $import->getTrocas();
+
+                    foreach ($trocas as $troca) {
+
+                        $dtOperacao = $troca['data_operacao'] ?? now()->format('d/m/Y');
+                        $cliente = $troca['cliente'] ?? null;
+                        $avarias = $troca['avarias'] ?? [];
+
+                        // Dispara o job para processar o relatório de avarias
+                        $horario = now()->format('H');
+                        if ($horario >= 5 && $horario < 12) {
+                            $saudacao = 'Bom dia';
+                        } elseif ($horario >= 12 && $horario < 18) {
+                            $saudacao = 'Boa tarde';
+                        } else {
+                            $saudacao = 'Boa noite';
+                        }
+
+                        $mensagem = "{$saudacao} *{$cliente->nome_fantasia}*!\n\nSua troca referente às avarias registradas em " . Carbon::parse($dtOperacao)->format('d/m/Y') . " será enviada hoje!\n\nSegue relação dos itens com mais detalhes.";
+                        $contatoCliente = $troca['contatoCliente'] ?? null;
+                        $protocolo = $troca['protocolo'] ?? null;
+
+                        ProcessarRelatorioAvariaJob::dispatch($avarias, $cliente, $contatoCliente, $protocolo, $mensagem)
+                            ->onQueue('imports');
+                    }
+                }
             }
             event(new ImportProgressUpdated($batch->fresh()));
         } catch (\Throwable $exception) {

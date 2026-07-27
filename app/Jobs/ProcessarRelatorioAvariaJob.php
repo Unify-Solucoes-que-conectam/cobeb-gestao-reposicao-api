@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Jobs;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Barryvdh\DomPDF\Facade\Pdf;
+use App\Support\WhatsAppService;
+
+class ProcessarRelatorioAvariaJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    protected $avarias;
+    protected $cliente;
+    protected $contatoCliente;
+    protected $protocolo;
+    protected $mensagem;
+
+    public function __construct($avarias, $cliente, $contatoCliente, $protocolo, $mensagem = null)
+    {
+        $this->avarias = $avarias;
+        $this->cliente = $cliente;
+        $this->contatoCliente = $contatoCliente;
+        $this->protocolo = $protocolo;
+        $this->mensagem = $mensagem;
+    }
+
+    public function handle()
+    {
+        $data = [
+            'protocolo' => $this->protocolo,
+            'cliente'   => $this->cliente,
+            'avarias'   => $this->avarias
+        ];
+
+        // 1. Gera o PDF
+        $pdf = Pdf::loadView('pdf.avarias', $data);
+        $nomeArquivo = 'relatorio_' . time() . '.pdf';
+
+        // 3. Define a saudação
+        $horario = now()->format('H');
+        if ($horario >= 5 && $horario < 12) {
+            $saudacao = 'Bom dia';
+        } elseif ($horario >= 12 && $horario < 18) {
+            $saudacao = 'Boa tarde';
+        } else {
+            $saudacao = 'Boa noite';
+        }
+
+        // 4. Envia via WhatsApp
+        if ($this->contatoCliente) {
+            $whatsapp = new WhatsAppService();
+            $whatsapp->sendMedia(
+                $this->contatoCliente->numero,
+                'document',
+                'application/pdf',
+                isset($this->mensagem) ? $this->mensagem : $saudacao . ' *' . $this->cliente->nome . '*! ' . "\n\n" . 'Foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.' . "\n\n" . 'Logo você receberá uma mensagem de aprovação!',
+                base64_encode($pdf->output()),
+                $nomeArquivo
+            );
+        }
+    }
+}

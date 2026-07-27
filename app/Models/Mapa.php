@@ -19,6 +19,7 @@ class Mapa extends Model
 
     protected $fillable = [
         'codigo',
+        'filial_id',
         'motorista_id',
         'data_entrega',
         'placa'
@@ -32,5 +33,10 @@ class Mapa extends Model
     public function clientes()
     {
         return $this->hasMany(ClientesMapa::class, 'mapa_id');
+    }
+
+    public function filial()
+    {
+        return $this->belongsTo(Filial::class, 'filial_id');
     }
 }
