@@ -33,7 +33,7 @@ class WhatsAppService
                 'apikey' => $this->apiKey,
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}/message/sendText/{$this->instance}", [
-                'number' => $number,
+                'number' => config('app.env') !== 'production' ? '5537998247669' : $number,
                 'text' => $text,
             ]);
 
@@ -69,7 +69,7 @@ class WhatsAppService
                 'apikey' => $this->apiKey,
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}/message/sendMedia/{$this->instance}", [
-                'number' => config('app.env') === 'local' ? '5537998247669' : $number,
+                'number' => config('app.env') !== 'production' ? '5537998247669' : $number,
                 'mediatype' => $mediatype,
                 'mimetype' => $mimetype,
                 'caption' => $caption,
