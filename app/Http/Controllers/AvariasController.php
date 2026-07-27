@@ -29,6 +29,11 @@ class AvariasController extends Controller
                 // consultar pelo nome ou código do cliente
                 $query->orWhereHas('cliente', function ($q) use ($request) {
                     $q->where('nome_fantasia', 'like', '%' . $request->search . '%')->orWhere('codigo', 'like', '%' . $request->search . '%');
+            if ($request->has('search')) {
+
+                // consultar pelo nome ou código do cliente
+                $query->orWhereHas('cliente', function ($q) use ($request) {
+                    $q->where('nome_fantasia', 'like', '%' . $request->search . '%')->orWhere('codigo', 'like', '%' . $request->search . '%');
                 });
             }
 
@@ -36,10 +41,14 @@ class AvariasController extends Controller
                 'cliente',
                 'motorista',
                 'motorista.mapaAtual',
+                'motorista',
+                'motorista.mapaAtual',
                 'motorista.cluster',
                 'motorista.filial',
                 'aprovador',
                 'anexos',
+                'itens',
+                'itens.produtoNotaFiscal',
                 'itens',
                 'itens.produtoNotaFiscal',
                 'itens.produtoNotaFiscal.produto',
@@ -111,6 +120,7 @@ class AvariasController extends Controller
                         $avaria = Avaria::create([
                             ...$validated,
                             'status' => 'pendente',
+                            'data_emissao' => now(),
                             'data_emissao' => now(),
                         ]);
                     }
@@ -250,7 +260,22 @@ class AvariasController extends Controller
     //     $request->validate([
     //         'quantidade' => 'required|integer|min:1',
     //     ]);
+    // public function updateQuantidadeProduto(Request $request, string $avariaId, string $produtoId)
+    // {
+    //     // Valida se a nova quantidade foi enviada e é um número válido
+    //     $request->validate([
+    //         'quantidade' => 'required|integer|min:1',
+    //     ]);
 
+    //     try {
+    //         // 1. Descobre os IDs de todas as notas fiscais vinculadas a esta avaria
+    //         $notasFiscaisIds = NotasFiscaisAvaria::where('avaria_id', $avariaId)
+    //             ->pluck('nota_fiscal_id');
+
+    //         // 2. Busca o registro do produto cruzando com as notas fiscais encontradas
+    //         $produtoNota = \App\Models\ProdutoNotaFiscal::whereIn('nota_fiscal_id', $notasFiscaisIds)
+    //             ->where('produto_id', $produtoId)
+    //             ->firstOrFail();
     //     try {
     //         // 1. Descobre os IDs de todas as notas fiscais vinculadas a esta avaria
     //         $notasFiscaisIds = NotasFiscaisAvaria::where('avaria_id', $avariaId)
@@ -266,7 +291,24 @@ class AvariasController extends Controller
     //             'quantidade' => $request->quantidade,
     //             'usuario_responsavel_id' => $request->user()->id // Opcional, para rastrear quem editou
     //         ]);
+    //         // 3. Atualiza a quantidade correta na tabela produtos_nota_fiscal
+    //         $produtoNota->update([
+    //             'quantidade' => $request->quantidade,
+    //             'usuario_responsavel_id' => $request->user()->id // Opcional, para rastrear quem editou
+    //         ]);
 
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Quantidade atualizada com sucesso.',
+    //             'data' => $produtoNota
+    //         ], 200);
+    //     } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Produto não encontrado nas notas fiscais desta avaria.'
+    //         ], 404);
+    //     } catch (\Exception $e) {
+    //         \Illuminate\Support\Facades\Log::error('Erro ao atualizar quantidade do produto na avaria: ' . $e->getMessage());
     //         return response()->json([
     //             'success' => true,
     //             'message' => 'Quantidade atualizada com sucesso.',
@@ -287,6 +329,13 @@ class AvariasController extends Controller
     //         ], 500);
     //     }
     // }
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Ocorreu um erro ao atualizar a quantidade.',
+    //             'error' => $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
 
     /**
      * Aprova ou reprova uma avaria.
@@ -300,7 +349,9 @@ class AvariasController extends Controller
         // 1. Valida se o status enviado é estritamente 'aprovada' ou 'reprovada'
         $request->validate([
             'status' => ['required', 'string', 'in:aprovada,reprovada,enviada,trocada'],
+            'status' => ['required', 'string', 'in:aprovada,reprovada,enviada,trocada'],
         ], [
+            'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.'
             'status.in' => 'O status deve ser apenas aprovada, reprovada, enviada ou trocada.'
         ]);
 
@@ -308,6 +359,8 @@ class AvariasController extends Controller
             // 2. Busca a avaria pelo ID
             $avaria = Avaria::findOrFail($id);
 
+            // 3. Regra de negócio: só pode alterar se estiver 'pendente'
+            if (strtolower($avaria->status) !== 'pendente') {
             // 3. Regra de negócio: só pode alterar se estiver 'pendente'
             if (strtolower($avaria->status) !== 'pendente') {
                 return response()->json([
@@ -323,17 +376,20 @@ class AvariasController extends Controller
             // Enviar via WhatsApp
             $whatsapp = new WhatsAppService();
             $sent = $whatsapp->sendMessage('37991946275', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso.");
+            $sent = $whatsapp->sendMessage('37991946275', "Olá {$avaria->cliente->nome_fantasia}, sua avaria foi {$request->status} com sucesso.");
 
             if (!$sent) {
                 Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
                 return response()->json([
                     'success' => false,
                     'message' => "Avaria {$request->status} com sucesso, mas falha ao enviar notificação via WhatsApp."
+                    'message' => "Avaria {$request->status} com sucesso, mas falha ao enviar notificação via WhatsApp."
                 ], 500);
             }
 
             return response()->json([
                 'success' => true,
+                'message' => "Avaria {$request->status} com sucesso, o cliente foi notificado via WhatsApp.",
                 'message' => "Avaria {$request->status} com sucesso, o cliente foi notificado via WhatsApp.",
                 'data' => $avaria
             ]);
