@@ -14,6 +14,7 @@ return new class extends Migration
       $table->string('pedido')->nullable();
       $table->foreignUuid('cliente_id')->nullable()->constrained('clientes')->nullOnDelete();
       $table->date('data_emissao')->nullable();
+      $table->date('data_operacao')->nullable();
       $table->string('operacao')->nullable();
       $table->timestamps();
     });

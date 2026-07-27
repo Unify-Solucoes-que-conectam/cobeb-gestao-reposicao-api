@@ -3,6 +3,7 @@
 namespace App\Imports;
 
 use App\Events\ImportProgressUpdated;
+use App\Models\Avaria;
 use App\Models\Categoria;
 use App\Models\Cliente;
 use App\Models\ClientesMapa;
@@ -37,6 +38,9 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     // Array para cache em memória das Foreign Keys e evitar N+1 queries
     private array $fkCache = [];
+
+    // trocas processadas e que serão retornadas para o controller
+    private array $trocas = [];
 
     public function __construct(string $batchId, string $type, int $totalRows)
     {
@@ -361,11 +365,12 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     // ─── Vendas e Trocas ─────────────────────────────────────────────────────
 
-    private function importVendaTroca(array $data): void
+    private function importVendaTroca(array $data)
     {
         $numero = trim((string) Arr::get($data, 'nota'));
         $pedido = trim((string) Arr::get($data, 'nr_pedido'));
         $codCliente = trim((string) Arr::get($data, 'cliente'));
+        $dataOperacao = trim((string) Arr::get($data, 'dt_operacao'));
         $operacao = trim((string) Arr::get($data, 'operacao'));
         $data_emissao = trim((string) Arr::get($data, 'emissao'));
 
@@ -388,6 +393,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
                 'pedido' => $pedido,
                 'cliente_id' => $this->resolveFk(Cliente::class, 'codigo', $codCliente),
                 'operacao' => $operacao,
+                'data_operacao' => $this->toDate($dataOperacao),
                 'data_emissao' => $this->toDate($data_emissao),
             ]
         );
@@ -409,6 +415,64 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
                 'valor_total' => $valorTotal,
             ]
         );
+
+        $cliente = Cliente::query()->where('codigo', $codCliente)->first();
+
+
+        if ($cliente) {
+
+            // 1. Cria uma chave única para agrupar as trocas por Cliente e Data
+            $chaveAgrupamento = $cliente->id . '_' . $dataOperacao;
+
+            // 2. Verifica se este cliente/data já foi processado nesta execução
+            if (!isset($this->trocas[$chaveAgrupamento])) {
+
+                // Monta a query base única buscando no model Avaria
+                $avarias = Avaria::query()
+                    ->where('cliente_id', $cliente->id)
+                    ->where('status', 'aprovada')
+                    ->whereDate('data_aprovacao', $this->toDate($dataOperacao))
+
+                    // 1. Filtra QUAIS Avarias serão retornadas (apenas as que têm essa nota e operação)
+                    ->whereHas('itens.produtoNotaFiscal.notaFiscal', function ($query) use ($numero) {
+                        $query->where('numero', $numero)
+                            ->whereIn('operacao', ['5', '39']);
+                    })
+
+                    // 2. Filtra os DADOS carregados dentro dessas Avarias (Constraining Eager Loads)
+                    ->with([
+                        'itens' => function ($query) use ($numero) {
+                            // Aplica o mesmo filtro nos itens que serão carregados na memória
+                            $query->whereHas('produtoNotaFiscal.notaFiscal', function ($subQuery) use ($numero) {
+                                $subQuery->where('numero', $numero)
+                                    ->whereIn('operacao', ['5', '39']);
+                            })
+                                // Carrega as sub-relações apenas para os itens que passaram no filtro
+                                ->with(['produtoNotaFiscal.notaFiscal', 'tipoAvaria']);
+                        }
+                    ])
+                    ->get();
+
+                Log::info("[ImportVendaTroca] Cliente '{$cliente->codigo}' - Avarias encontradas: " . $avarias->count() . " para a nota '{$numero}'.");
+
+                // Busca o telefone do cliente com a flag isWhatsapp
+                $contatoCliente = ClienteTelefones::query()
+                    ->where('cliente_id', $cliente->id)
+                    ->where('isWhatsapp', true)
+                    ->first();
+
+                // 3. Se houver avarias, armazena no array usando a chave de agrupamento
+                if ($avarias->isNotEmpty()) {
+                    $this->trocas[$chaveAgrupamento] = [
+                        'cliente' => $cliente,
+                        'avarias' => $avarias,
+                        'data_operacao' => $this->toDate($dataOperacao),
+                        'contatoCliente' => $contatoCliente,
+                        'protocolo' => 'TRC-' . $dataOperacao . '-' . $cliente->codigo,
+                    ];
+                }
+            }
+        }
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────
@@ -464,23 +528,44 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         return is_numeric($v) ? (float) $v : null;
     }
 
-    private function toDate(mixed $value): ?string
+    private function toDate($value): ?string
     {
-        if (blank($value)) return null;
-        $v = trim((string) $value);
-
-        if (is_numeric($v) && (float) $v > 10000) {
-            $timestamp = ((float) $v - 25569) * 86400;
-            return date('Y-m-d', (int) $timestamp);
+        if (blank($value)) {
+            return null;
         }
 
-        foreach (['Y-m-d', 'd/m/Y', 'm/d/Y', 'd-m-Y'] as $fmt) {
-            $dt = \DateTime::createFromFormat($fmt, $v);
-            if ($dt !== false) {
-                return $dt->format('Y-m-d');
+        // 1. Se já for um objeto DateTime/Carbon
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+
+        // 2. Se for Número Serial do Excel (ex: 46230) -> Converte matematicamente
+        if (is_numeric($value)) {
+            try {
+                $timestamp = ($value - 25569) * 86400;
+                return \Carbon\Carbon::createFromTimestamp($timestamp, 'UTC')->format('Y-m-d');
+            } catch (\Throwable $e) {
+                // Se não for um número de data válido, ignora e tenta os passos abaixo
             }
         }
-        return $v;
+
+        $valueStr = trim((string) $value);
+
+        // 3. Se for string no formato brasileiro (ex: "27/07/2026")
+        if (str_contains($valueStr, '/')) {
+            try {
+                return \Carbon\Carbon::createFromFormat('d/m/Y', $valueStr)->format('Y-m-d');
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
+
+        // 4. Se for texto em formato ISO (ex: "2026-07-27")
+        try {
+            return \Carbon\Carbon::parse($valueStr)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     public function chunkSize(): int
@@ -498,5 +583,11 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         return [
             'delimiter' => ';',
         ];
+    }
+
+    // retornar as trocas processadas para o controller
+    public function getTrocas(): array
+    {
+        return $this->trocas;
     }
 }

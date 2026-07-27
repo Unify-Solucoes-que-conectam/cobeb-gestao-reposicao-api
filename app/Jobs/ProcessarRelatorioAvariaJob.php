@@ -7,7 +7,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Storage;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Support\WhatsAppService;
 
@@ -41,10 +40,6 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
         // 1. Gera o PDF
         $pdf = Pdf::loadView('pdf.avarias', $data);
         $nomeArquivo = 'relatorio_' . time() . '.pdf';
-        $caminho = 'documentos/' . $nomeArquivo;
-
-        // 2. Salva no Storage
-        Storage::disk('public')->put($caminho, $pdf->output());
 
         // 3. Define a saudação
         $horario = now()->format('H');

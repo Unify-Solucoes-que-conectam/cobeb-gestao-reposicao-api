@@ -355,7 +355,7 @@ class AvariasController extends Controller
                 $tipoDocumento = Str::length($clienteModel->documento ?? '') === 11 ? 'cpf' : 'cnpj';
 
                 $cliente = (object)[
-                    'nome'     => $clienteModel->razao_social ?? $clienteModel->nome,
+                    'nome'     => $clienteModel->razao_social ?? $clienteModel->nome_fantasia ?? 'Cliente',
                     $tipoDocumento => $clienteModel->documento ?? '',
                     'endereco' => $enderecoCompleto ?? 'Endereço não cadastrado',
                     'telefone' => $contatoCliente->numero ?? 'N/A'
@@ -365,6 +365,7 @@ class AvariasController extends Controller
 
                 // Dispara o Job para processar o PDF e o WhatsApp em segundo plano
                 ProcessarRelatorioAvariaJob::dispatch($avarias, $cliente, $contatoCliente, $protocolo);
+                
             }
 
             // Enviar via WhatsApp
