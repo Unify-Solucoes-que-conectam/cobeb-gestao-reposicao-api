@@ -16,6 +16,8 @@ return new class extends Migration
       $table->decimal('valor_desconto', 12, 2)->default(0);
       $table->decimal('valor_adicional', 12, 2)->default(0);
       $table->decimal('valor_total', 12, 2)->default(0);
+      $table->date('data_operacao')->nullable();
+      $table->string('operacao', 50)->nullable();
       $table->timestamps();
 
       $table->unique(['nota_fiscal_id', 'produto_id']);

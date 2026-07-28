@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -100,11 +101,14 @@ class ProcessImportJob implements ShouldQueue
 
                     $trocas = $import->getTrocas();
 
-                    foreach ($trocas as $troca) {
+                    foreach ($trocas as $dadosRelatorio) {
 
-                        $dtOperacao = $troca['data_operacao'] ?? now()->format('d/m/Y');
-                        $cliente = $troca['cliente'] ?? null;
-                        $avarias = $troca['avarias'] ?? [];
+
+                        $dtOperacao = $dadosRelatorio['data_operacao'] ?? now()->format('d/m/Y');
+                        $cliente = $dadosRelatorio['cliente'] ?? null;
+                        $avarias = $dadosRelatorio['avarias'] ?? [];
+
+                        Log::info("Dados Relatório: " . json_encode($cliente));
 
                         // Dispara o job para processar o relatório de avarias
                         $horario = now()->format('H');
@@ -116,9 +120,9 @@ class ProcessImportJob implements ShouldQueue
                             $saudacao = 'Boa noite';
                         }
 
-                        $mensagem = "{$saudacao} *{$cliente->nome_fantasia}*!\n\nSua troca referente às avarias registradas em " . Carbon::parse($dtOperacao)->format('d/m/Y') . " será enviada hoje!\n\nSegue relação dos itens com mais detalhes.";
-                        $contatoCliente = $troca['contatoCliente'] ?? null;
-                        $protocolo = $troca['protocolo'] ?? null;
+                        $mensagem = "{$saudacao} *{$cliente->nome}*!\n\nSua troca referente às avarias registradas em " . Carbon::parse($dtOperacao)->format('d/m/Y') . " será enviada hoje!\n\nSegue relação dos itens com mais detalhes.";
+                        $contatoCliente = $dadosRelatorio['contatoCliente'] ?? '';
+                        $protocolo = $dadosRelatorio['protocolo'] ?? null;
 
                         ProcessarRelatorioAvariaJob::dispatch($avarias, $cliente, $contatoCliente, $protocolo, $mensagem)
                             ->onQueue('imports');

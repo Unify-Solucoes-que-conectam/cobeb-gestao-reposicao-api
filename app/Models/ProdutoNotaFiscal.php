@@ -22,6 +22,8 @@ class ProdutoNotaFiscal extends Model
     'valor_desconto',
     'valor_adicional',
     'valor_total',
+    'operacao',
+    'data_operacao',
   ];
 
   protected $casts = [

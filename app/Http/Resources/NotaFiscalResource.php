@@ -18,7 +18,6 @@ class NotaFiscalResource extends JsonResource
             'id' => $this->id,
             'numero' => $this->numero,
             'pedido' => $this->pedido,
-            'operacao' => $this->operacao,
             'data_emissao' => $this->data_emissao,
             'produtos' => ProdutosNotaFiscalResource::collection($this->whenLoaded('produtos')),
         ];
