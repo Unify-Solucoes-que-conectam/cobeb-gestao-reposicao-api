@@ -85,15 +85,16 @@ class ImportController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        $imports = ImportBatch::query()
+        // Subquery para encontrar o maior ID (ou última data) para cada 'type'
+        $latestIds = ImportBatch::query()
+            ->selectRaw('MAX(id) as id')
             ->where('user_id', $user->id)
-            ->where(function ($query) {
-                $query->whereIn('status', ['pending', 'processing', 'failed'])
-                    ->orWhere(function ($q) {
-                        $q->where('status', 'completed')
-                            ->where('updated_at', '>=', now()->subMinutes(5));
-                    });
-            })
+            ->groupBy('type');
+
+        // Query principal filtrando apenas os IDs obtidos na subquery
+        $imports = ImportBatch::query()
+            ->whereIn('id', $latestIds)
+            ->whereIn('status', ['pending', 'processing', 'failed', 'completed'])
             ->orderByDesc('created_at')
             ->get();
 
