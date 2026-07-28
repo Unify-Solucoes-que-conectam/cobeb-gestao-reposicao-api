@@ -11,12 +11,14 @@ class WhatsAppService
     protected string $baseUrl;
     protected string $apiKey;
     protected string $instance;
+    protected string $defaultNumber;
 
     public function __construct()
     {
         $this->baseUrl = rtrim(config('evolution.base_url'), '/');
         $this->apiKey = config('evolution.api_key');
         $this->instance = config('evolution.instance');
+        $this->defaultNumber = config('evolution.default_number');
     }
 
     public function sendMessage(string $phone, string $text): bool
@@ -33,17 +35,17 @@ class WhatsAppService
                 'apikey' => $this->apiKey,
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}/message/sendText/{$this->instance}", [
-                'number' => config('app.env') !== 'production' ? '5537998247669' : $number,
+                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
                 'text' => $text,
             ]);
 
             if ($response->successful()) {
-                Log::info('Mensagem enviada', ['number' => $number]);
+                Log::info('Mensagem enviada', [$this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),]);
                 return true;
             }
 
             Log::error('Erro ao enviar mensagem', [
-                'number' => $number,
+                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
@@ -51,7 +53,7 @@ class WhatsAppService
             return false;
         } catch (\Throwable $e) {
             Log::error('Exceção ao enviar mensagem', [
-                'number' => $number,
+                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
                 'error' => $e->getMessage(),
             ]);
 
@@ -69,7 +71,7 @@ class WhatsAppService
                 'apikey' => $this->apiKey,
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}/message/sendMedia/{$this->instance}", [
-                'number' => config('app.env') !== 'production' ? '5537998247669' : $number,
+                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
                 'mediatype' => $mediatype,
                 'mimetype' => $mimetype,
                 'caption' => $caption,
@@ -78,20 +80,28 @@ class WhatsAppService
             ]);
 
             if ($response->successful()) {
-                Log::info('Arquivo enviado', ['number' => $number]);
+                Log::info('Arquivo enviado', [$this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),]);
                 return true;
             }
 
             Log::error('Erro ao enviar arquivo', [
-                'number' => $number,
+                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
                 'status' => $response->status(),
                 'body' => $response->body(),
+                'payload' => [
+                    'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
+                    'mediatype' => $mediatype,
+                    'mimetype' => $mimetype,
+                    'caption' => $caption,
+                    'media' => $media,
+                    'fileName' => $fileName,
+                ],
             ]);
 
             return false;
         } catch (\Throwable $e) {
             Log::error('Exceção ao enviar arquivo', [
-                'number' => $number,
+                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
                 'error' => $e->getMessage(),
             ]);
 

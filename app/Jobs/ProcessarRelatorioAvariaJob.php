@@ -41,6 +41,9 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
         $pdf = Pdf::loadView('pdf.avarias', $data);
         $nomeArquivo = 'relatorio_' . time() . '.pdf';
 
+        // 2. Salva o PDF no storage
+        // $pdf->save(storage_path('app/public/' . $nomeArquivo));
+
         // 3. Define a saudação
         $horario = now()->format('H');
         if ($horario >= 5 && $horario < 12) {
@@ -55,7 +58,7 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
         if ($this->contatoCliente) {
             $whatsapp = new WhatsAppService();
             $whatsapp->sendMedia(
-                $this->contatoCliente->numero,
+                $this->contatoCliente->numero ?? $this->contatoCliente, // Use o número do contato ou o próprio contato
                 'document',
                 'application/pdf',
                 isset($this->mensagem) ? $this->mensagem : $saudacao . ' *' . $this->cliente->nome . '*! ' . "\n\n" . 'Foram encontradas algumas avarias na entrega de hoje, segue relação com mais detalhes 📃.' . "\n\n" . 'Logo você receberá uma mensagem de aprovação!',

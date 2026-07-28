@@ -19,8 +19,6 @@ class NotaFiscal extends Model
         'numero',
         'pedido',
         'cliente_id',
-        'data_operacao',
-        'operacao',
         'data_emissao',
     ];
 

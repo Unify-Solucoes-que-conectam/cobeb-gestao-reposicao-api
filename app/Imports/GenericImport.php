@@ -3,7 +3,6 @@
 namespace App\Imports;
 
 use App\Events\ImportProgressUpdated;
-use App\Models\Avaria;
 use App\Models\Categoria;
 use App\Models\Cliente;
 use App\Models\ClientesMapa;
@@ -18,6 +17,7 @@ use App\Models\NotaFiscal;
 use App\Models\Produto;
 use App\Models\ProdutoNotaFiscal;
 use App\Models\TipoMarca;
+use App\Models\Troca;
 use App\Models\Usuario;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -365,7 +365,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     // ─── Vendas e Trocas ─────────────────────────────────────────────────────
 
-    private function importVendaTroca(array $data)
+    private function importVendaTroca(array $data): void
     {
         $numero = trim((string) Arr::get($data, 'nota'));
         $pedido = trim((string) Arr::get($data, 'nr_pedido'));
@@ -384,95 +384,116 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             throw new \RuntimeException('Missing numero');
         }
 
+        $clienteId = $this->resolveFk(Cliente::class, 'codigo', $codCliente);
+
         /**
-         * Cadastrar notas fiscais
+         * Cadastrar/Atualizar nota fiscal
          */
-        NotaFiscal::updateOrCreate(
+        $notaFiscal = NotaFiscal::updateOrCreate(
             ['numero' => $numero],
             [
-                'pedido' => $pedido,
-                'cliente_id' => $this->resolveFk(Cliente::class, 'codigo', $codCliente),
-                'operacao' => $operacao,
-                'data_operacao' => $this->toDate($dataOperacao),
+                'pedido'       => $pedido,
+                'cliente_id'   => $clienteId,
                 'data_emissao' => $this->toDate($data_emissao),
             ]
         );
 
+        $produtoId = $this->resolveFk(Produto::class, 'codigo', $produto);
+
         /**
-         * Como cada nota fiscal pode ter vários produtos, cadastramos cada produto da nota fiscal na tabela produtos_nota_fiscal
-         * Cada linha da tabela possui o código da nota fiscal, o código do produto e seus detalhes,
-         * como quantidade, valor de desconto, valor adicional e valor total.
+         * Cadastrar/Atualizar item do produto na nota fiscal
          */
-        ProdutoNotaFiscal::updateOrCreate(
+        $produtoNotaFiscal = ProdutoNotaFiscal::updateOrCreate(
             [
-                'nota_fiscal_id' => $this->resolveFk(NotaFiscal::class, 'numero', $numero),
-                'produto_id' => $this->resolveFk(Produto::class, 'codigo', $produto),
+                'nota_fiscal_id' => $notaFiscal->id,
+                'produto_id'     => $produtoId,
             ],
             [
-                'quantidade' => $quantidade,
-                'valor_desconto' => $valorDesconto,
+                'quantidade'      => $quantidade,
+                'valor_desconto'  => $valorDesconto,
                 'valor_adicional' => $valorAdicional,
-                'valor_total' => $valorTotal,
+                'valor_total'     => $valorTotal,
+                'operacao'        => $operacao,
+                'data_operacao'   => $this->toDate($dataOperacao),
             ]
         );
 
-        $cliente = Cliente::query()->where('codigo', $codCliente)->first();
-
-
-        if ($cliente) {
-
-            // 1. Cria uma chave única para agrupar as trocas por Cliente e Data
-            $chaveAgrupamento = $cliente->id . '_' . $dataOperacao;
-
-            // 2. Verifica se este cliente/data já foi processado nesta execução
-            if (!isset($this->trocas[$chaveAgrupamento])) {
-
-                // Monta a query base única buscando no model Avaria
-                $avarias = Avaria::query()
-                    ->where('cliente_id', $cliente->id)
-                    ->where('status', 'aprovada')
-                    ->whereDate('data_aprovacao', $this->toDate($dataOperacao))
-
-                    // 1. Filtra QUAIS Avarias serão retornadas (apenas as que têm essa nota e operação)
-                    ->whereHas('itens.produtoNotaFiscal.notaFiscal', function ($query) use ($numero) {
-                        $query->where('numero', $numero)
-                            ->whereIn('operacao', ['5', '39']);
-                    })
-
-                    // 2. Filtra os DADOS carregados dentro dessas Avarias (Constraining Eager Loads)
-                    ->with([
-                        'itens' => function ($query) use ($numero) {
-                            // Aplica o mesmo filtro nos itens que serão carregados na memória
-                            $query->whereHas('produtoNotaFiscal.notaFiscal', function ($subQuery) use ($numero) {
-                                $subQuery->where('numero', $numero)
-                                    ->whereIn('operacao', ['5', '39']);
-                            })
-                                // Carrega as sub-relações apenas para os itens que passaram no filtro
-                                ->with(['produtoNotaFiscal.notaFiscal', 'tipoAvaria']);
-                        }
-                    ])
-                    ->get();
-
-                Log::info("[ImportVendaTroca] Cliente '{$cliente->codigo}' - Avarias encontradas: " . $avarias->count() . " para a nota '{$numero}'.");
-
-                // Busca o telefone do cliente com a flag isWhatsapp
-                $contatoCliente = ClienteTelefones::query()
-                    ->where('cliente_id', $cliente->id)
-                    ->where('isWhatsapp', true)
-                    ->first();
-
-                // 3. Se houver avarias, armazena no array usando a chave de agrupamento
-                if ($avarias->isNotEmpty()) {
-                    $this->trocas[$chaveAgrupamento] = [
-                        'cliente' => $cliente,
-                        'avarias' => $avarias,
-                        'data_operacao' => $this->toDate($dataOperacao),
-                        'contatoCliente' => $contatoCliente,
-                        'protocolo' => 'TRC-' . $dataOperacao . '-' . $cliente->codigo,
-                    ];
-                }
-            }
+        // Apenas operações de troca (operações 5 e 39)
+        if (!in_array((int) $operacao, [5, 39], true) && !in_array($operacao, ['5', '39'], true)) {
+            return;
         }
+
+        /**
+         * Cadastrar/Atualizar registro de Troca
+         */
+        Troca::updateOrCreate(
+            [
+                'produto_nota_fiscal_id' => $produtoNotaFiscal->id,
+                'operacao'               => $operacao,
+                'data_operacao'          => $this->toDate($dataOperacao),
+            ],
+            [
+                'quantidade'             => $quantidade,
+            ]
+        );
+
+        $cliente = Cliente::find($clienteId)->with('contatos')->first();
+
+        if (!$cliente) {
+            return;
+        }
+
+        // Carrega as relações para acesso direto no Blade ($item->produtoNotaFiscal->produto e ->notaFiscal)
+        $produtoNotaFiscal->load(['produto', 'notaFiscal']);
+
+        // Inicializa o agrupador do cliente caso ainda não exista
+        if (!isset($this->trocas[$cliente->id])) {
+            // Mapeia atributos exigidos no Blade: $cliente->nome, $cliente->cpf/$cliente->cnpj e $cliente->telefone
+            $cliente->nome = $cliente->nome_fantasia ?: $cliente->razao_social;
+
+            $doc = preg_replace('/[^0-9]/', '', (string) $cliente->documento);
+            if (strlen($doc) === 11) {
+                $cliente->cpf = $cliente->documento;
+            } elseif (strlen($doc) === 14) {
+                $cliente->cnpj = $cliente->documento;
+            }
+
+            $telWhats = $cliente->contatos()->where('isWhatsapp', true)->first()?->numero;
+            $telPadrao = $cliente->contatos()->first()?->numero;
+            $cliente->numero = $telWhats ?? $telPadrao ?? 'Não informado';
+
+            $this->trocas[$cliente->id] = [
+                'cliente'        => (object) [
+                    'nome' => $cliente->nome,
+                    'cpf' => $cliente->cpf ?? null,
+                    'cnpj' => $cliente->cnpj ?? null,
+                    'telefone' => $cliente->numero,
+                    'endereco' => $cliente->endereco . ($cliente->complemento ? ' - ' . $cliente->complemento : '') . ', ' . $cliente->bairro . ', ' . $cliente->cidade . '/' . $cliente->uf . ' - CEP: ' . $cliente->cep,
+                ],
+                'protocolo'      => 'TRC-' . now()->format('YmdHis') . '-' . $cliente->id,
+                'contatoCliente' => $cliente->numero,
+                'data_operacao'  => $this->toDate($dataOperacao),
+                'notas'          => [],
+            ];
+        }
+
+        // Agrupa os itens da troca por Nota Fiscal
+        if (!isset($this->trocas[$cliente->id]['notas'][$numero])) {
+            $this->trocas[$cliente->id]['notas'][$numero] = [
+                'itens' => collect([]),
+            ];
+        }
+
+        // Cria o objeto do item conforme o contrato esperado pelo Blade
+        $itemAvaria = (object) [
+            'produtoNotaFiscal'   => $produtoNotaFiscal,
+            'quantidade_avariada' => $quantidade,
+            'tipoAvaria'          => (object) [
+                'descricao' => "Troca - Operação {$operacao}"
+            ],
+        ];
+
+        $this->trocas[$cliente->id]['notas'][$numero]['itens']->push($itemAvaria);
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────
@@ -585,9 +606,30 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         ];
     }
 
-    // retornar as trocas processadas para o controller
+    /**
+     * Retorna as trocas processadas formatadas para o Controller passar à View/PDF do Blade.
+     */
     public function getTrocas(): array
     {
-        return $this->trocas;
+        $trocasFormatadas = [];
+
+        foreach ($this->trocas as $clienteId => $dadosCliente) {
+            // Transforma o agrupamento temporário 'notas' na estrutura 'avarias' esperada pelo Blade
+            $avarias = collect($dadosCliente['notas'])->map(function ($nota) {
+                return (object) [
+                    'itens' => $nota['itens'],
+                ];
+            })->values();
+
+            $trocasFormatadas[$clienteId] = [
+                'cliente'        => $dadosCliente['cliente'],
+                'protocolo'      => $dadosCliente['protocolo'],
+                'contatoCliente' => $dadosCliente['contatoCliente'],
+                'data_operacao'  => $dadosCliente['data_operacao'],
+                'avarias'        => $avarias,
+            ];
+        }
+
+        return $trocasFormatadas;
     }
 }
