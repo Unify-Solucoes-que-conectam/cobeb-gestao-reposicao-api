@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\MenuResource;
+use App\Http\Resources\UsuarioResource;
 use App\Models\Menu;
 use App\Models\Usuario;
 use App\Notifications\UserNotification;
@@ -15,22 +17,6 @@ use Illuminate\Validation\Rules\Password as RulesPassword;
 
 class AuthController extends Controller
 {
-    /**
-     * Monta array de dados do usuário para retorno na autenticação.
-     *
-     * @param  Usuario  $user  Usuário autenticado
-     * @return array Dados do usuário
-     */
-    private function userDataArray(Usuario $user): array
-    {
-        return [
-            'id' => $user->id,
-            'nome' => $user->nome,
-            'cpf' => $user->cpf,
-            'role' => $user->role,
-            'primeiro_acesso' => $user->primeiro_acesso,
-        ];
-    }
 
     /**
      * Gera e retorna um token único para o usuário, removendo tokens antigos.
@@ -86,37 +72,39 @@ class AuthController extends Controller
         $tokenName = (config('app.env') !== 'production' && str_starts_with($request->userAgent(), 'PostmanRuntime/')) ? 'postman_auth' : 'web_auth';
         $token = $this->generateToken($user, $tokenName);
 
-        // gerar uuid para a notificação
-        $notificationId = (string) Str::uuid();
+        // notificação apenas para usuários do monitoramento
+        if ($user->role === 'monitoramento') {
 
-        // notificação
-        $notification = [
-            'id' => $notificationId,
-            'titulo' => 'Bem-vindo ao nosso sistema de gestão, ' . ucwords(strtolower($user->nome)) . '!',
-            'mensagem' => 'Estamos felizes em tê-lo(a) conosco. Explore nossos recursos e aproveite ao máximo sua experiência.',
-            'tipo' => 'info',
-            'usuario_id' => $user->id,
-        ];
+            // gerar uuid para a notificação
+            $notificationId = (string) Str::uuid();
 
-        // notificação de boas vindas, só aparece se a notificação ainda não foi enviada
-        if (!$user->notificacoes()
-            ->where('titulo', $notification['titulo'])
-            ->where('mensagem', $notification['mensagem'])
-            ->where('tipo', $notification['tipo'])
-            ->exists()) {
-            // enviar notificação
-            $user->notify(new UserNotification($notification));
+            $notification = [
+                'id' => $notificationId,
+                'titulo' => 'Bem-vindo ao sistema de gestão de reposição, ' . ucwords(strtolower($user->nome)) . '!',
+                'mensagem' => 'Você está logado no sistema de monitoramento.',
+                'tipo' => 'info',
+            ];
+
+            // notificação de boas vindas, só aparece se a notificação ainda não foi enviada
+            if (!$user->notificacoes()
+                ->where('titulo', $notification['titulo'])
+                ->where('mensagem', $notification['mensagem'])
+                ->where('tipo', $notification['tipo'])
+                ->exists()) {
+                // enviar notificação
+                $user->notify(new UserNotification($notification));
+            }
         }
 
-        $menus = Menu::buildMenuTree(Menu::query()->get()->toArray());
+        $menus = Menu::with('subMenus')->whereNull('menu_pai_id')->get();
 
         return response()->json([
             'success' => true,
             'message' => 'Login realizado com sucesso.',
             'data' => [
                 'token' => $token,
-                'usuario' => $this->userDataArray($user),
-                'menus' => $menus,
+                'usuario' => UsuarioResource::make($user->load('motorista', 'motorista.mapaAtual', 'motorista.filial')),
+                'menus' => MenuResource::collection($menus),
             ],
         ]);
     }
@@ -151,32 +139,6 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Usuário registrado com sucesso.',
         ]);
-    }
-
-    /**
-     * Retorna os dados do usuário logado (Check Me)
-     */
-    public function me(Request $request): JsonResponse
-    {
-        try {
-            $user = $request->user();
-            $menus = Menu::buildMenuTree(Menu::query()->get()->toArray());
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Dados do usuário autenticado',
-                'data' => [
-                    'usuario' => $this->userDataArray($user),
-                    'menus' => $menus,
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao obter os dados do usuário autenticado',
-                'error' => $e->getMessage()
-            ], 500);
-        }
     }
 
     /**

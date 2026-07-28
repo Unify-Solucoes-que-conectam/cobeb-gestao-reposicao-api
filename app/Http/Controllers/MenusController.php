@@ -4,24 +4,25 @@ namespace App\Http\Controllers;
 
 use App\Models\Menu;
 use Illuminate\Http\Request;
+use App\Http\Resources\MenuResource;
 
 class MenusController extends Controller
 {
     // Listar todos os menus
     public function read()
     {
-        $menus = Menu::buildMenuTree(Menu::query()->get()->toArray());
+        $menus = Menu::with('subMenus')->get();
 
         try {
             return response()->json([
                 'success' => true,
                 'message' => 'Consulta de menus realizada com sucesso.',
-                'data' => $menus
+                'data' => MenuResource::collection($menus)
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao consultar menus.'
+                'message' => 'Erro ao consultar menus:' . $e->getMessage()
             ], 500);
         }
     }

@@ -16,6 +16,8 @@ class Cliente extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
+        'filial_id',
+        'categoria_id',
         'codigo',
         'documento',
         'nome_fantasia',
@@ -28,35 +30,32 @@ class Cliente extends Model
         'cep',
         'latitude',
         'longitude',
-        'categoria_id',
-        'tipo_pessoa_id',
-        'pdv_ativo',
-        'usuario_responsavel_id',
+        'status',
+        'tipo_pessoa',
     ];
 
     protected $casts = [
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
-        'pdv_ativo' => 'boolean',
     ];
+
+    public function filial()
+    {
+        return $this->belongsTo(Filial::class);
+    }
 
     public function categoria()
     {
         return $this->belongsTo(Categoria::class);
     }
 
-    public function tipoPessoa()
-    {
-        return $this->belongsTo(TipoPessoa::class);
-    }
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
-    }
-
     public function notasFiscais()
     {
         return $this->hasMany(NotaFiscal::class, 'cliente_id');
+    }
+
+    public function contatos()
+    {
+        return $this->hasMany(ClienteTelefones::class, 'cliente_id');
     }
 }

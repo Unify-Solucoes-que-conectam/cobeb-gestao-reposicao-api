@@ -11,11 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('tipos_pessoa', function (Blueprint $table) {
+        Schema::create('trocas', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('codigo')->unique();
-            $table->string('descricao');
-            $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+            $table->foreignUuid('produto_nota_fiscal_id')->constrained('produtos_nota_fiscal');
+            $table->integer('quantidade');
+            $table->string('operacao');
+            $table->date('data_operacao');
             $table->timestamps();
         });
     }
@@ -25,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('tipos_pessoa');
+        Schema::dropIfExists('trocas');
     }
 };

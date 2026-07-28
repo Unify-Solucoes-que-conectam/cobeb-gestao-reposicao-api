@@ -10,9 +10,8 @@ return new class extends Migration
     {
         Schema::create('anexos_avaria', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('path');
             $table->foreignUuid('avaria_id')->nullable()->constrained('avarias')->nullOnDelete();
-            $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+            $table->string('path');
             $table->timestamps();
         });
     }

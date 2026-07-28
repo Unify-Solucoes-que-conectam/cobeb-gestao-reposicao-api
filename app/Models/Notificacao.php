@@ -20,7 +20,6 @@ class Notificacao extends Model
         'link',
         'data_envio',
         'data_leitura',
-        'usuario_id',
         'menu_id',
     ];
 
@@ -28,11 +27,6 @@ class Notificacao extends Model
         'data_envio' => 'datetime',
         'data_leitura' => 'datetime',
     ];
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_id');
-    }
 
     public function menu()
     {

@@ -20,17 +20,11 @@ class ClientesMapa extends Model
     protected $fillable = [
         'mapa_id',
         'cliente_id',
-        'usuario_responsavel_id',
     ];
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
-    }
 
     public function mapa()
     {
-        return $this->belongsTo(Motorista::class, 'mapa_id');
+        return $this->belongsTo(Mapa::class, 'mapa_id');
     }
 
     public function cliente()

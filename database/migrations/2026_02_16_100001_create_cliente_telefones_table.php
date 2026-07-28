@@ -8,12 +8,11 @@ return new class extends Migration
 {
   public function up(): void
   {
-    Schema::create('telefones_cliente', function (Blueprint $table) {
+    Schema::create('cliente_telefones', function (Blueprint $table) {
       $table->uuid('id')->primary();
       $table->string('numero')->nullable();
       $table->foreignUuid('cliente_id')->constrained('clientes')->cascadeOnDelete();
-      $table->boolean('principal')->default(false);
-      $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+      $table->boolean('isWhatsapp')->default(false);
       $table->timestamps();
 
       $table->unique(['cliente_id', 'numero']);
@@ -22,6 +21,6 @@ return new class extends Migration
 
   public function down(): void
   {
-    Schema::dropIfExists('telefones_cliente');
+    Schema::dropIfExists('cliente_telefones');
   }
 };

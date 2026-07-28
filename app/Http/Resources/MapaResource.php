@@ -17,16 +17,11 @@ class MapaResource extends JsonResource
         return [
             'id' => $this->id,
             'codigo' => $this->codigo,
-            'status' => $this->status,
-
-            // Aqui carregamos os objetos
+            'clientes' => ClienteResource::collection($this->whenLoaded('clientes')),
             'motorista' => new MotoristaResource($this->whenLoaded('motorista')),
-            'clientes' => ClientesMapaResource::collection($this->whenLoaded('clientes')),
-            'notas_fiscais' => NotaFiscalResource::collection($this->whenLoaded('notas_fiscais')),
-
-            'usuario_responsavel_id' => $this->usuario_responsavel_id,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'filial' => new FilialResource($this->whenLoaded('filial')),
+            'data_entrega' => $this->data_entrega,
+            'placa' => $this->placa,
         ];
     }
 }

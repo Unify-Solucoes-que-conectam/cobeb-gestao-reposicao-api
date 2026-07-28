@@ -19,7 +19,11 @@ class ProdutoNotaFiscal extends Model
     'nota_fiscal_id',
     'produto_id',
     'quantidade',
-    'usuario_responsavel_id',
+    'valor_desconto',
+    'valor_adicional',
+    'valor_total',
+    'operacao',
+    'data_operacao',
   ];
 
   protected $casts = [
@@ -34,10 +38,5 @@ class ProdutoNotaFiscal extends Model
   public function produto()
   {
     return $this->belongsTo(Produto::class);
-  }
-
-  public function usuario()
-  {
-    return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
   }
 }

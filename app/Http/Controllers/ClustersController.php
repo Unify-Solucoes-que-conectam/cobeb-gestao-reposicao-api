@@ -36,6 +36,37 @@ class ClustersController extends Controller
         }
     }
 
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), Cluster::createRules(), Cluster::messages());
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ]);
+        }
+
+        // lógica para criar um novo cluster
+        try {
+            Cluster::create([
+                'descricao' => $request->descricao,
+                'codigo' => $request->codigo,
+                'usuario_responsavel_id' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cluster cadastrado com sucesso.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao cadastrar cluster: ' . $e->getMessage()
+            ]);
+        }
+    }
+
     // função para atualizar os dados do cluster
     public function update(Request $request, $id)
     {

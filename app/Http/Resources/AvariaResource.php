@@ -7,27 +7,23 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class AvariaResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
         return [
             'id' => $this->id,
-
-            // Aqui carregamos os objetos
+            'motorista' => new MotoristaResource(
+                $this->whenLoaded('motorista'),
+                $this->data_emissao
+            ),
             'cliente' => new ClienteResource($this->whenLoaded('cliente')),
-            'notas_fiscais' => NotaFiscalAvariaResource::collection($this->whenLoaded('notasFiscais')),
-            'produtos' => ProdutoAvariaResource::collection($this->whenLoaded('produtos')),
-            'mapa' => new MapaResource($this->whenLoaded('mapa')),
-            'anexos' => AnexosAvariaResource::collection($this->whenLoaded('anexos')),
             'status' => $this->status,
-
-            'usuario_responsavel_id' => $this->usuario_responsavel_id,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'data_emissao' => $this->data_emissao,
+            'aprovador' => new UsuarioResource($this->whenLoaded('aprovador')),
+            'data_aprovacao' => $this->data_aprovacao,
+            'motivo_reprovacao' => $this->motivo_reprovacao,
+            'nota_fiscal' => NotaFiscalResource::make($this->nota_fiscal),
+            'itens' => ItemAvariaResource::collection($this->whenLoaded('itens')),
+            'anexos' => $this->whenLoaded('anexos') ? AnexosAvariaResource::collection($this->anexos) : [],
         ];
     }
 }

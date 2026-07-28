@@ -19,15 +19,11 @@ class Mapa extends Model
 
     protected $fillable = [
         'codigo',
-        'status',
+        'filial_id',
         'motorista_id',
-        'usuario_responsavel_id',
+        'data_entrega',
+        'placa'
     ];
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
-    }
 
     public function motorista()
     {
@@ -39,9 +35,8 @@ class Mapa extends Model
         return $this->hasMany(ClientesMapa::class, 'mapa_id');
     }
 
-    public function notas_fiscais()
+    public function filial()
     {
-        // aqui usamos o código do mapa para criar o relacionamento, já que as notas fiscais estão associadas ao código do mapa e não ao ID
-        return $this->hasMany(NotaFiscal::class, 'mapa', 'codigo');
+        return $this->belongsTo(Filial::class, 'filial_id');
     }
 }

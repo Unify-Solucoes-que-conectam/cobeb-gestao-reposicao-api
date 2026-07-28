@@ -20,11 +20,23 @@ class Cluster extends Model
     protected $fillable = [
         'codigo',
         'descricao',
-        'usuario_responsavel_id',
     ];
 
-    public function usuario()
+    // --- Validation Rules ---
+    public static function createRules(): array
     {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
+        return [
+            'codigo' => ['required', 'unique:clusters,codigo'],
+            'descricao' => ['required'],
+        ];
+    }
+
+    public static function messages(): array
+    {
+        return [
+            'codigo.required' => 'O código do cluster é obrigatório.',
+            'codigo.unique' => 'O código do cluster já está cadastrado.',
+            'descricao.required' => 'A descrição do cluster é obrigatória.',
+        ];
     }
 }

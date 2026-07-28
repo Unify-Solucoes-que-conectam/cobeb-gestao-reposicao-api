@@ -5,11 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-class TipoPessoa extends Model
+class Troca extends Model
 {
     use HasUuids;
 
-    protected $table = 'tipos_pessoa';
+    protected $table = 'trocas';
 
     public $timestamps = true;
 
@@ -18,13 +18,14 @@ class TipoPessoa extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'codigo',
-        'descricao',
-        'usuario_responsavel_id',
+        'produto_nota_fiscal_id',
+        'quantidade',
+        'operacao',
+        'data_operacao',
     ];
 
-    public function usuario()
+    public function produtoNotaFiscal()
     {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
+        return $this->belongsTo(ProdutoNotaFiscal::class, 'produto_nota_fiscal_id');
     }
 }

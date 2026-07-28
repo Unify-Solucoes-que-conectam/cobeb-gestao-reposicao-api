@@ -20,11 +20,5 @@ class Embalagem extends Model
     protected $fillable = [
         'codigo',
         'descricao',
-        'usuario_responsavel_id',
     ];
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
-    }
 }

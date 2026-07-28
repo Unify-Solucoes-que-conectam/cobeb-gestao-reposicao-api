@@ -13,7 +13,11 @@ return new class extends Migration
       $table->foreignUuid('nota_fiscal_id')->constrained('notas_fiscais')->cascadeOnDelete();
       $table->foreignUuid('produto_id')->constrained('produtos')->cascadeOnDelete();
       $table->integer('quantidade')->default(0);
-      $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+      $table->decimal('valor_desconto', 12, 2)->default(0);
+      $table->decimal('valor_adicional', 12, 2)->default(0);
+      $table->decimal('valor_total', 12, 2)->default(0);
+      $table->date('data_operacao')->nullable();
+      $table->string('operacao', 50)->nullable();
       $table->timestamps();
 
       $table->unique(['nota_fiscal_id', 'produto_id']);

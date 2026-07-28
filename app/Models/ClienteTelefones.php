@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-class TelefonesCliente extends Model
+class ClienteTelefones extends Model
 {
     use HasUuids;
 
@@ -18,16 +18,10 @@ class TelefonesCliente extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'numero',
         'cliente_id',
-        'principal',
-        'usuario_responsavel_id',
+        'numero',
+        'isWhatsapp',
     ];
-
-    public function usuario()
-    {
-        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
-    }
 
     public function cliente()
     {

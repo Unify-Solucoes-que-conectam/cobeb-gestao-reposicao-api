@@ -6,6 +6,7 @@ use App\Broadcasting\DatabaseChannel;
 use App\Broadcasting\GmailChannel;
 use App\Models\PersonalAccessToken;
 use Illuminate\Notifications\ChannelManager;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Sanctum\Sanctum;
@@ -44,6 +45,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Registra um novo canal de transmissão para o banco de dados
         $this->app->make(ChannelManager::class)->extend('database', fn() => new DatabaseChannel());
+
+        if ($this->app->environment('production')) {
+            URL::forceRootUrl(config('app.url'));
+        }
 
         // Nota: O Laravel 11 faz auto-discovery de listeners automaticamente.
         // Não é necessário registrar manualmente eventos que seguem a convenção:

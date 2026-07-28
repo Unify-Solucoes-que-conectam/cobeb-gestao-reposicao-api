@@ -22,10 +22,10 @@ return new class extends Migration
             $table->string('cep', 10)->nullable();
             $table->decimal('latitude', 10, 7)->nullable();
             $table->decimal('longitude', 10, 7)->nullable();
+            $table->foreignUuid('filial_id')->nullable()->constrained('filiais')->nullOnDelete();
             $table->foreignUuid('categoria_id')->nullable()->constrained('categorias')->nullOnDelete();
-            $table->foreignUuid('tipo_pessoa_id')->nullable()->constrained('tipos_pessoa')->nullOnDelete();
-            $table->boolean('pdv_ativo')->default(true);
-            $table->foreignUuid('usuario_responsavel_id')->constrained('usuarios')->cascadeOnDelete();
+            $table->enum('tipo_pessoa', ['fisica', 'juridica'])->nullable();
+            $table->enum('status', ['ativo', 'bloqueado'])->default('ativo');
             $table->timestamps();
         });
     }
