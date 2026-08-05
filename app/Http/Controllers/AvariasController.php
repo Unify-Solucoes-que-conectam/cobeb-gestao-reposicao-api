@@ -59,6 +59,7 @@ class AvariasController extends Controller
             $avarias = $query->with([
                 'anexos',
                 'cliente',
+                'cliente.contatos',
                 'motorista.mapas',
                 'motorista.cluster',
                 'motorista.filial',
