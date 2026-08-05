@@ -157,11 +157,9 @@ class ClientesController extends Controller
             $query->where('cliente_id', $id);
 
             // filtrar por status do item, se fornecido na query string
-            if ($request->has('tipo_avaria_id')) {
-                $tipoAvariaId = $request->input('tipo_avaria_id');
-                $query->whereHas('itens', function ($q) use ($tipoAvariaId) {
-                    $q->where('tipo_avaria_id', $tipoAvariaId);
-                });
+            if ($request->has('status')) {
+                $status = $request->input('status');
+                $query->where('status', $status);
             }
 
             $avarias = $query->with([
