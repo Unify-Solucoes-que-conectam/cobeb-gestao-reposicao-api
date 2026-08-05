@@ -17,8 +17,14 @@ class MapasController extends Controller
         try {
             $query = Mapa::query();
 
+            // filtro por código
             if ($request->has('search')) {
                 $query->Where('codigo', 'like', '%' . $request->input('search') . '%');
+            }
+
+            // filtro por filial
+            if ($request->has('filial')) {
+                $query->where('filial_id', $request->input('filial'));
             }
 
             $mapas = $query->with([
