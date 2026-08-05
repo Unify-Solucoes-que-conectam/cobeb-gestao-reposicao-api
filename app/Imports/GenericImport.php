@@ -322,6 +322,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
     private function importMapa(array $data): void
     {
         $codigo = trim((string) Arr::get($data, 'nro_do_mapa'));
+        $codFilial = trim((string) Arr::get($data, 'unb'));
         $codMotorista = trim((string) Arr::get($data, 'motorista'));
         $dataEntrega = trim((string) Arr::get($data, 'data_entrega'));
         $placa = trim((string) Arr::get($data, 'placa'));
@@ -331,10 +332,15 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             throw new \RuntimeException('Missing codigo (nro_do_mapa)');
         }
 
+        if (blank($codFilial)) {
+            throw new \RuntimeException('Missing codFilial (unb)');
+        }
+
         // 1. Guarda a instância do Mapa criado/atualizado
         $mapa = Mapa::updateOrCreate(
             ['codigo' => $codigo],
             [
+                'filial_id'    => $this->resolveFk(Filial::class, 'codigo', $codFilial),
                 'motorista_id' => $this->resolveFk(Motorista::class, 'codigo', $codMotorista),
                 'data_entrega' => $this->toDate($dataEntrega),
                 'placa'        => $placa,
