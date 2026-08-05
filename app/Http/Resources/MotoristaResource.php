@@ -26,7 +26,7 @@ class MotoristaResource extends JsonResource
 
         $esconderCampos = $request->routeIs(['auth.login']);
 
-        $mapa = ($this->relationLoaded('mapas') && $this->dataEntrega)
+        $mapa = ($this->relationLoaded('mapas') && !is_null($this->dataEntrega))
             ? $this->mapas->firstWhere('data_entrega', $this->dataEntrega)
             : null;
 
@@ -38,8 +38,9 @@ class MotoristaResource extends JsonResource
             'status' => $this->status,
             'data_admissao' => $this->data_admissao,
             'data_inativacao' => $this->data_inativacao,
-
-            'mapa' => $this->whenLoaded('mapaAtual') ? new MapaResource($this->mapaAtual) : ($mapa ? new MapaResource($mapa) : null),
+            'mapa' => $this->relationLoaded('mapaAtual') && $this->mapaAtual
+                ? new MapaResource($this->mapaAtual)
+                : ($mapa ? new MapaResource($mapa) : null),
             'filial' => new FilialResource($this->whenLoaded('filial')),
             'cluster' => new ClusterResource($this->whenLoaded('cluster')),
         ];
