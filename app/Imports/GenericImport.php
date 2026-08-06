@@ -360,6 +360,10 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
         $produtoId = $this->resolveFk(Produto::class, 'codigo', $produto);
 
+        if (!$produtoId) {
+            throw new \RuntimeException("Produto com código '{$produto}' não foi encontrado no banco de dados.");
+        }
+
         $produtoNotaFiscal = ProdutoNotaFiscal::updateOrCreate(
             [
                 'nota_fiscal_id' => $notaFiscal->id,
