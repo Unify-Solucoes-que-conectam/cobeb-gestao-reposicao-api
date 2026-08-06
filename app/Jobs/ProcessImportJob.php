@@ -23,6 +23,8 @@ class ProcessImportJob implements ShouldQueue
     private string $batchId;
     private string $path;
     private string $type;
+    
+    public $timeout = 600;
 
     public function __construct(string $batchId, string $path, string $type)
     {
