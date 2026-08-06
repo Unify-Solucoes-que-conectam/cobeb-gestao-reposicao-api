@@ -43,7 +43,7 @@ class Motorista extends Model
             'codigo' => ['required', 'unique:motoristas,codigo'],
             'filial_id' => ['nullable', 'exists:filiais,id'],
             'cluster_id' => ['nullable', 'exists:clusters,id'],
-            'status' => ['nullable', 'in:ativo,inativo'],
+            'status' => ['nullable', 'in:ativo,inativo,bloqueado'],
             'data_admissao' => ['nullable', 'date'],
             'data_inativacao' => ['nullable', 'date'],
         ];
@@ -65,7 +65,7 @@ class Motorista extends Model
             ],
             'filial_id' => ['required', 'nullable', 'exists:filiais,id'],
             'cluster_id' => ['required', 'nullable', 'exists:clusters,id'],
-            'status' => ['required', 'in:ativo,inativo'],
+            'status' => ['required', 'in:ativo,inativo,bloqueado'],
             'data_admissao' => ['nullable', 'date'],
             'data_inativacao' => ['nullable', 'date'],
         ];
@@ -82,7 +82,7 @@ class Motorista extends Model
             'codigo.nullable' => 'O código do motorista não pode ser nulo.',
             'filial_id.exists' => 'O ID da filial informado não existe.',
             'cluster_id.exists' => 'O ID do cluster informado não existe.',
-            'status.in' => 'O status deve ser "ativo" ou "inativo".',
+            'status.in' => 'O status deve ser "ativo", "inativo" ou "bloqueado".',
             'data_admissao.date' => 'A data de admissão deve ser uma data válida.',
             'data_inativacao.date' => 'A data de inativação deve ser uma data válida.',
         ];

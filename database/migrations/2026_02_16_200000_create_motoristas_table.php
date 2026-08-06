@@ -14,7 +14,7 @@ return new class extends Migration
             $table->foreignUuid('filial_id')->nullable()->constrained('filiais')->nullOnDelete();
             $table->foreignUuid('cluster_id')->nullable()->constrained('clusters')->nullOnDelete();
             $table->foreignUuid('usuario_id')->constrained('usuarios')->cascadeOnDelete();
-            $table->enum('status', ['ativo', 'inativo'])->default('ativo');
+            $table->enum('status', ['ativo', 'inativo', 'bloqueado'])->default('ativo');
             $table->date('data_admissao')->nullable();
             $table->date('data_inativacao')->nullable();
             $table->timestamps();
