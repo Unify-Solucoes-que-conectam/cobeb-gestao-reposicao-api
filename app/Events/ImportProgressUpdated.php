@@ -34,7 +34,6 @@ class ImportProgressUpdated implements ShouldBroadcast
     {
         return [
             'id' => $this->batch->id,
-            'user_id' => $this->batch->user_id,
             'type' => $this->batch->type,
             'status' => $this->batch->status,
             'total_rows' => $this->batch->total_rows,
