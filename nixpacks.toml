@@ -92,7 +92,7 @@ stderr_logfile=/var/log/worker-laravel.log
 "worker-imports.conf" = '''
 [program:worker-imports]
 process_name=%(program_name)s_%(process_num)02d
-command=bash -c 'exec php /app/artisan queue:work --queue=imports --sleep=3 --tries=3 --max-time=3600 --memory=256'
+command=bash -c 'exec php /app/artisan queue:work --queue=imports --sleep=3 --tries=3 --max-time=3600 --memory=256 --timeout=600'
 user=www-data
 autostart=true
 autorestart=true
