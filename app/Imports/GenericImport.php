@@ -36,10 +36,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
     private int $processedRows = 0;
     private int $errorCount = 0;
 
-    // Array para cache em memória das Foreign Keys e evitar N+1 queries
     private array $fkCache = [];
-
-    // trocas processadas e que serão retornadas para o controller
     private array $trocas = [];
 
     public function __construct(string $batchId, string $type, int $totalRows)
@@ -49,41 +46,41 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         $this->totalRows = $totalRows;
     }
 
-    /**
-     * Processa um chunk inteiro de uma vez (por padrão 500 linhas)
-     */
     public function collection(Collection $rows): void
     {
+        $chunkProcessed = 0;
+
         foreach ($rows as $row) {
             $data = $row->toArray();
 
             try {
                 $this->importRow($data);
-                $this->processedRows++;
             } catch (\Throwable $exception) {
-                $this->processedRows++;
                 $this->errorCount++;
 
                 Log::warning('Import row failed', [
                     'batch_id' => $this->batchId,
-                    'error' => $exception->getMessage(),
+                    'error'    => $exception->getMessage(),
                 ]);
+            } finally {
+                $chunkProcessed++;
+                $this->processedRows++;
             }
         }
 
-        // Atualiza o progresso no banco e dispara o WebSocket apenas UMA VEZ no final do chunk
-        $this->updateProgress();
+        // Incrementa atomicamente no banco para não perder o progresso de chunks anteriores
+        $this->updateProgress($chunkProcessed);
     }
 
     private function importRow(array $data): void
     {
         match ($this->type) {
-            'clientes' => $this->importCliente($data),
-            'motoristas' => $this->importMotorista($data),
-            'produtos' => $this->importProduto($data),
-            'mapas' => $this->importMapa($data),
+            'clientes'      => $this->importCliente($data),
+            'motoristas'    => $this->importMotorista($data),
+            'produtos'      => $this->importProduto($data),
+            'mapas'         => $this->importMapa($data),
             'vendas_trocas' => $this->importVendaTroca($data),
-            default => throw new \RuntimeException("Tipo de importação desconhecido: {$this->type}"),
+            default         => throw new \RuntimeException("Tipo de importação desconhecido: {$this->type}"),
         };
     }
 
@@ -91,30 +88,25 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     private function importCliente(array $data): void
     {
-        // Com o WithHeadingRow, o cabeçalho original é formatado para slug
-        $codigo = Arr::get($data, 'cod_pdv');
-        $documento = trim((string) Arr::get($data, 'documento'));
+        $codigo       = Arr::get($data, 'cod_pdv');
+        $documento    = trim((string) Arr::get($data, 'documento'));
         $nomeFantasia = trim((string) Arr::get($data, 'nome_fantasia'));
-        $razaoSocial = trim((string) Arr::get($data, 'razao_social'));
-        $endereco = trim((string) Arr::get($data, 'endereco'));
-        $complemento = trim((string) Arr::get($data, 'complemento'));
-        $bairro = trim((string) Arr::get($data, 'bairro'));
-        $cidade = trim((string) Arr::get($data, 'cidade'));
-        $uf = trim((string) Arr::get($data, 'uf'));
-        $cep = trim((string) Arr::get($data, 'cep'));
-        $filial = trim((string) Arr::get($data, 'filial'));
+        $razaoSocial  = trim((string) Arr::get($data, 'razao_social'));
+        $endereco     = trim((string) Arr::get($data, 'endereco'));
+        $complemento  = trim((string) Arr::get($data, 'complemento'));
+        $bairro       = trim((string) Arr::get($data, 'bairro'));
+        $cidade       = trim((string) Arr::get($data, 'cidade'));
+        $uf           = trim((string) Arr::get($data, 'uf'));
+        $cep          = trim((string) Arr::get($data, 'cep'));
+        $filial       = trim((string) Arr::get($data, 'filial'));
         $descCategoria = trim((string) Arr::get($data, 'categoria'));
-        $tipoPessoa = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Arr::get($data, 'tipo_de_pessoa')));
-        $status = trim((string) Str::lower(Arr::get($data, 'status_do_pdv')));
+        $tipoPessoa   = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Arr::get($data, 'tipo_de_pessoa')));
+        $status       = trim((string) Str::lower(Arr::get($data, 'status_do_pdv')));
 
         if (blank($codigo) || blank($nomeFantasia)) {
             throw new \RuntimeException('Faltando Cód PDV ou Nome Fantasia');
         }
 
-        /**
-         * Como o arquivo de importação contém apenas a descrição da categoria cadastramos apenas a descriçao e guardamos o id
-         * para referenciar na tabela de clientes. Se a categoria já existir, apenas pegamos o id dela.
-         */
         $categoriaId = null;
 
         if (!blank($descCategoria)) {
@@ -132,55 +124,43 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         $cliente = Cliente::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'documento' => $documento,
+                'documento'     => $documento,
                 'nome_fantasia' => $nomeFantasia,
-                'razao_social' => $razaoSocial,
-                'endereco' => $endereco,
-                'complemento' => $complemento,
-                'bairro' => $bairro,
-                'cidade' => $cidade,
-                'uf' => $uf,
-                'cep' => $cep,
-                'latitude' => null,
-                'longitude' => null,
-                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $filial),
-                'categoria_id' => $categoriaId,
-                'tipo_pessoa' => $tipoPessoa, // remover caracteres especiais
-                'status' => $status,
+                'razao_social'  => $razaoSocial,
+                'endereco'      => $endereco,
+                'complemento'   => $complemento,
+                'bairro'        => $bairro,
+                'cidade'        => $cidade,
+                'uf'            => $uf,
+                'cep'           => $cep,
+                'latitude'      => null,
+                'longitude'     => null,
+                'filial_id'     => $this->resolveFk(Filial::class, 'codigo', $filial),
+                'categoria_id'  => $categoriaId,
+                'tipo_pessoa'   => $tipoPessoa,
+                'status'        => $status,
             ]
         );
 
-        /**
-         * O campo telefone_s é um campo de texto que contém várias telefones separados por "|", os telefones estão em formatos distintos
-         * xx xxxx-xxxx, xx xxxxx-xxxx
-         */
         $telefonesRaw = (string) Arr::get($data, 'telefones');
 
-        // Se o campo de telefone estiver totalmente vazio, ignora o processo
         if (blank($telefonesRaw)) {
             return;
         }
 
-        // Explode pela barra "|" e limpa espaços das pontas e caracteres invisíveis
         $telefonesArray = array_map(function ($tel) {
-            // Remove espaços extras nas pontas e normaliza espaços invisíveis de planilha
             return trim(preg_replace('/\s+/', ' ', $tel));
         }, explode('|', $telefonesRaw));
 
-        // Remove itens vazios e REINDEXA o array (crucial para o $telefonesArray[0] funcionar)
         $telefonesArray = array_values(array_unique(array_filter($telefonesArray)));
-
         $totalTelefones = count($telefonesArray);
 
         if ($totalTelefones === 0) {
             return;
         }
 
-        // Se houver apenas 1 telefone, ele é o WhatsApp. Se houver mais, o 1º é o principal/WhatsApp
         foreach ($telefonesArray as $index => $telefone) {
-            // Define isWhatsapp como true apenas para o único ou o primeiro telefone do registro
             $isWhatsapp = ($totalTelefones === 1) || ($index === 0);
-
             $telefoneLimpo = preg_replace('/[^0-9]/', '', $telefone);
 
             ClienteTelefones::updateOrCreate(
@@ -199,67 +179,57 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     private function importProduto(array $data): void
     {
-        $codigo = trim((string) Arr::get($data, 'codigo'));
-        $ean = trim((string) Arr::get($data, 'ean'));
-        $descricao = trim((string) Arr::get($data, 'descricao'));
+        $codigo        = trim((string) Arr::get($data, 'codigo'));
+        $ean           = trim((string) Arr::get($data, 'ean'));
+        $descricao     = trim((string) Arr::get($data, 'descricao'));
         $precoUnitario = 0;
 
-        $tipoMarca = trim((string) Arr::get($data, 'tipo_marca'));
-        $codTipoMarca = $tipoMarca; // Inicialmente assume que o código é o mesmo que a descrição
+        $tipoMarca    = trim((string) Arr::get($data, 'tipo_marca'));
+        $codTipoMarca = $tipoMarca;
         if (str_contains($tipoMarca, ' - ')) {
             [$codTipoMarca, $tipoMarca] = explode(' - ', $tipoMarca, 2);
             $codTipoMarca = trim($codTipoMarca);
-            $tipoMarca = trim($tipoMarca);
+            $tipoMarca    = trim($tipoMarca);
         }
 
         $codEmbalagem = trim((string) Arr::get($data, 'embalagem'));
-        $embalagem = trim((string) Arr::get($data, 'embalagem'));
+        $embalagem    = trim((string) Arr::get($data, 'embalagem'));
         if (str_contains($embalagem, ' - ')) {
             [$codEmbalagem, $embalagem] = explode(' - ', $embalagem, 2);
             $codEmbalagem = trim($codEmbalagem);
-            $embalagem = trim($embalagem);
+            $embalagem    = trim($embalagem);
         }
 
         if (blank($codigo)) {
             throw new \RuntimeException('Missing codigo');
         }
 
-        /**
-         * Cadastrar tipo de marca automaticamente caso não exista.
-         */
         $tipoMarcaId = $this->resolveFk(TipoMarca::class, 'codigo', $codTipoMarca);
         if (!$tipoMarcaId && !blank($tipoMarca)) {
-            $tipoMarca = TipoMarca::updateOrCreate(
+            $tipoMarcaRecord = TipoMarca::updateOrCreate(
                 ['codigo' => $codTipoMarca ?? $tipoMarca],
-                [
-                    'descricao' => $tipoMarca,
-                ]
+                ['descricao' => $tipoMarca]
             );
-            $tipoMarcaId = $tipoMarca->id;
+            $tipoMarcaId = $tipoMarcaRecord->id;
         }
 
-        /**
-         * Cadastrar embalagem automaticamente caso não exista.
-         */
         $embalagemId = $this->resolveFk(Embalagem::class, 'codigo', $codEmbalagem);
         if (!$embalagemId && !blank($embalagem)) {
-            $embalagem = Embalagem::updateOrCreate(
+            $embalagemRecord = Embalagem::updateOrCreate(
                 ['codigo' => $codEmbalagem ?? $embalagem],
-                [
-                    'descricao' => $embalagem,
-                ]
+                ['descricao' => $embalagem]
             );
-            $embalagemId = $embalagem->id;
+            $embalagemId = $embalagemRecord->id;
         }
 
         Produto::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'ean' => $ean,
-                'descricao' => $descricao,
+                'ean'            => $ean,
+                'descricao'      => $descricao,
                 'preco_unitario' => $this->toDecimal($precoUnitario),
-                'tipo_marca_id' => $tipoMarcaId,
-                'embalagem_id' => $embalagemId,
+                'tipo_marca_id'  => $tipoMarcaId,
+                'embalagem_id'   => $embalagemId,
             ]
         );
     }
@@ -268,39 +238,30 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     private function importMotorista(array $data): void
     {
-        $cpf = trim((string) Arr::get($data, 'cpf'));
-        $codigo = trim((string) Arr::get($data, 'codmotorista'));
-        $nome = trim((string) Arr::get($data, 'nome_motorista'));
-        $cod_cluster = trim((string) Arr::get($data, 'codcluster'));
-        $desc_cluster = trim((string) Arr::get($data, 'cluster'));
-        $cod_filial = trim((string) Arr::get($data, 'codfilial'));
-        $data_admissao = trim((string) Arr::get($data, 'data_admissao'));
+        $cpf             = trim((string) Arr::get($data, 'cpf'));
+        $codigo          = trim((string) Arr::get($data, 'codmotorista'));
+        $nome            = trim((string) Arr::get($data, 'nome_motorista'));
+        $cod_cluster     = trim((string) Arr::get($data, 'codcluster'));
+        $desc_cluster    = trim((string) Arr::get($data, 'cluster'));
+        $cod_filial      = trim((string) Arr::get($data, 'codfilial'));
+        $data_admissao   = trim((string) Arr::get($data, 'data_admissao'));
         $data_inativacao = trim((string) Arr::get($data, 'data_inativacao'));
 
         if (blank($codigo) || blank($nome)) {
             throw new \RuntimeException('Missing codigo or nome');
         }
 
-        /**
-         * Cadastrar cluster automaticamente caso não exista.
-         */
         $cluster = Cluster::updateOrCreate(
             ['codigo' => $cod_cluster],
-            [
-                'descricao' => $desc_cluster,
-            ]
+            ['descricao' => $desc_cluster]
         );
 
-        /**
-         * Cadastrar um usuário automaticamente para cada motorista.
-         * O usuário será criado com a senha igual ao CPF (deve ser alterada posteriormente).
-         */
         $usuario = Usuario::updateOrCreate(
             ['cpf' => $cpf],
             [
-                'nome' => $nome,
-                'senha' => $cpf,
-                'role' => 'motorista',
+                'nome'            => $nome,
+                'senha'           => $cpf,
+                'role'            => 'motorista',
                 'primeiro_acesso' => true,
             ]
         );
@@ -308,25 +269,26 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         Motorista::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $cod_filial),
-                'cluster_id' => $cluster->id,
-                'usuario_id' => $usuario->id,
-                'status' => Str::lower(Arr::get($data, 'status')),
-                'data_admissao' => $this->toDate($data_admissao),
+                'filial_id'       => $this->resolveFk(Filial::class, 'codigo', $cod_filial),
+                'cluster_id'      => $cluster->id,
+                'usuario_id'      => $usuario->id,
+                'status'          => Str::lower(Arr::get($data, 'status')),
+                'data_admissao'   => $this->toDate($data_admissao),
                 'data_inativacao' => $this->toDate($data_inativacao),
             ]
         );
     }
 
-    // ─── Mapas ─────────────────────────────────────────────────────
+    // ─── Mapas ──────────────────────────────────────────────────────────
+
     private function importMapa(array $data): void
     {
-        $codigo = trim((string) Arr::get($data, 'nro_do_mapa'));
-        $codFilial = trim((string) Arr::get($data, 'unb'));
+        $codigo       = trim((string) Arr::get($data, 'nro_do_mapa'));
+        $codFilial    = trim((string) Arr::get($data, 'unb'));
         $codMotorista = trim((string) Arr::get($data, 'motorista'));
-        $dataEntrega = trim((string) Arr::get($data, 'data_entrega'));
-        $placa = trim((string) Arr::get($data, 'placa'));
-        $clientes = trim((string) Arr::get($data, 'clientes'));
+        $dataEntrega  = trim((string) Arr::get($data, 'data_entrega'));
+        $placa        = trim((string) Arr::get($data, 'placa'));
+        $clientes     = trim((string) Arr::get($data, 'clientes'));
 
         if (blank($codigo)) {
             throw new \RuntimeException('Missing codigo (nro_do_mapa)');
@@ -336,7 +298,6 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             throw new \RuntimeException('Missing codFilial (unb)');
         }
 
-        // 1. Guarda a instância do Mapa criado/atualizado
         $mapa = Mapa::updateOrCreate(
             ['codigo' => $codigo],
             [
@@ -347,44 +308,40 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             ]
         );
 
-        // 2. Cadastrar clientes do mapa
         if (!blank($clientes)) {
-            // 'strlen' garante que só remova elementos vazios
             $clientesArray = array_filter(array_map('trim', explode('/', $clientes)), 'strlen');
 
             foreach ($clientesArray as $codCliente) {
-                // Tenta resolver a FK do cliente
                 $clienteId = $this->resolveFk(Cliente::class, 'codigo', ltrim($codCliente, '0'));
 
                 if ($clienteId) {
                     ClientesMapa::updateOrCreate([
-                        'mapa_id'    => $mapa->id, // Usando o ID direto do mapa recém criado
+                        'mapa_id'    => $mapa->id,
                         'cliente_id' => $clienteId,
                     ]);
                 } else {
-                    // Log para você saber exatamente qual cliente não foi encontrado no banco
                     Log::warning("[ImportMapa] Cliente '{$codCliente}' não encontrado no banco para o Mapa '{$codigo}'.");
                 }
             }
         }
     }
 
-    // ─── Vendas e Trocas ─────────────────────────────────────────────────────
+    // ─── Vendas e Trocas ─────────────────────────────────────────────────
 
     private function importVendaTroca(array $data): void
     {
-        $numero = trim((string) Arr::get($data, 'nota'));
-        $pedido = trim((string) Arr::get($data, 'nr_pedido'));
-        $codCliente = trim((string) Arr::get($data, 'cliente'));
+        $numero       = trim((string) Arr::get($data, 'nota'));
+        $pedido       = trim((string) Arr::get($data, 'nr_pedido'));
+        $codCliente   = trim((string) Arr::get($data, 'cliente'));
         $dataOperacao = trim((string) Arr::get($data, 'dt_operacao'));
-        $operacao = trim((string) Arr::get($data, 'operacao'));
+        $operacao     = trim((string) Arr::get($data, 'operacao'));
         $data_emissao = trim((string) Arr::get($data, 'emissao'));
 
-        $produto = trim((string) Arr::get($data, 'produto'));
-        $quantidade = (int) Arr::get($data, 'qtde');
-        $valorDesconto = $this->toDecimal(Arr::get($data, 'desconto'));
+        $produto        = trim((string) Arr::get($data, 'produto'));
+        $quantidade     = (int) Arr::get($data, 'qtde');
+        $valorDesconto  = $this->toDecimal(Arr::get($data, 'desconto'));
         $valorAdicional = $this->toDecimal(Arr::get($data, 'adic_finan'));
-        $valorTotal = $this->toDecimal(Arr::get($data, 'total'));
+        $valorTotal     = $this->toDecimal(Arr::get($data, 'total'));
 
         if (blank($numero)) {
             throw new \RuntimeException('Missing numero');
@@ -392,9 +349,6 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
         $clienteId = $this->resolveFk(Cliente::class, 'codigo', $codCliente);
 
-        /**
-         * Cadastrar/Atualizar nota fiscal
-         */
         $notaFiscal = NotaFiscal::updateOrCreate(
             ['numero' => $numero],
             [
@@ -406,9 +360,6 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
         $produtoId = $this->resolveFk(Produto::class, 'codigo', $produto);
 
-        /**
-         * Cadastrar/Atualizar item do produto na nota fiscal
-         */
         $produtoNotaFiscal = ProdutoNotaFiscal::updateOrCreate(
             [
                 'nota_fiscal_id' => $notaFiscal->id,
@@ -424,14 +375,10 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             ]
         );
 
-        // Apenas operações de troca (operações 5 e 39)
         if (!in_array((int) $operacao, [5, 39], true) && !in_array($operacao, ['5', '39'], true)) {
             return;
         }
 
-        /**
-         * Cadastrar/Atualizar registro de Troca
-         */
         Troca::updateOrCreate(
             [
                 'produto_nota_fiscal_id' => $produtoNotaFiscal->id,
@@ -439,22 +386,20 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
                 'data_operacao'          => $this->toDate($dataOperacao),
             ],
             [
-                'quantidade'             => $quantidade,
+                'quantidade' => $quantidade,
             ]
         );
 
-        $cliente = Cliente::find($clienteId)->with('contatos')->first();
+        // CORREÇÃO: Busca segura da relação com contatos sem quebrar quando $clienteId é null
+        $cliente = $clienteId ? Cliente::with('contatos')->find($clienteId) : null;
 
         if (!$cliente) {
             return;
         }
 
-        // Carrega as relações para acesso direto no Blade ($item->produtoNotaFiscal->produto e ->notaFiscal)
         $produtoNotaFiscal->load(['produto', 'notaFiscal']);
 
-        // Inicializa o agrupador do cliente caso ainda não exista
         if (!isset($this->trocas[$cliente->id])) {
-            // Mapeia atributos exigidos no Blade: $cliente->nome, $cliente->cpf/$cliente->cnpj e $cliente->telefone
             $cliente->nome = $cliente->nome_fantasia ?: $cliente->razao_social;
 
             $doc = preg_replace('/[^0-9]/', '', (string) $cliente->documento);
@@ -470,9 +415,9 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
             $this->trocas[$cliente->id] = [
                 'cliente'        => (object) [
-                    'nome' => $cliente->nome,
-                    'cpf' => $cliente->cpf ?? null,
-                    'cnpj' => $cliente->cnpj ?? null,
+                    'nome'     => $cliente->nome,
+                    'cpf'      => $cliente->cpf ?? null,
+                    'cnpj'     => $cliente->cnpj ?? null,
                     'telefone' => $cliente->numero,
                     'endereco' => $cliente->endereco . ($cliente->complemento ? ' - ' . $cliente->complemento : '') . ', ' . $cliente->bairro . ', ' . $cliente->cidade . '/' . $cliente->uf . ' - CEP: ' . $cliente->cep,
                 ],
@@ -483,14 +428,12 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             ];
         }
 
-        // Agrupa os itens da troca por Nota Fiscal
         if (!isset($this->trocas[$cliente->id]['notas'][$numero])) {
             $this->trocas[$cliente->id]['notas'][$numero] = [
                 'itens' => collect([]),
             ];
         }
 
-        // Cria o objeto do item conforme o contrato esperado pelo Blade
         $itemAvaria = (object) [
             'produtoNotaFiscal'   => $produtoNotaFiscal,
             'quantidade_avariada' => $quantidade,
@@ -504,10 +447,6 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     // ─── Helpers ────────────────────────────────────────────────────────
 
-    /**
-     * Busca o relacionamento no banco. Possui cache interno para evitar
-     * que a mesma query seja repetida mil vezes.
-     */
     private function resolveFk(string $modelClass, string $column, mixed $value): ?string
     {
         if (blank($value)) {
@@ -516,32 +455,34 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
         $cacheKey = $modelClass . '_' . $column;
 
-        // Se o valor já foi buscado no banco antes, retorna do cache em memória
         if (isset($this->fkCache[$cacheKey][$value])) {
             return $this->fkCache[$cacheKey][$value];
         }
 
         $record = $modelClass::query()->where($column, $value)->first();
 
-        // Salva o resultado no cache (mesmo se for null, para não ficar re-buscando registro inexistente)
         $this->fkCache[$cacheKey][$value] = $record?->id;
 
         return $this->fkCache[$cacheKey][$value];
     }
 
-    private function updateProgress(): void
+    private function updateProgress(int $chunkProcessedRows): void
     {
-        $percentage = $this->totalRows > 0 ? (int) floor(($this->processedRows / $this->totalRows) * 100) : 0;
-        $percentage = min($percentage, 100); // Impede que passe de 100%
-
         $batch = ImportBatch::query()->find($this->batchId);
 
         if ($batch) {
+            // Incrementa as linhas processadas de forma acumulativa
+            $batch->increment('processed_rows', $chunkProcessedRows);
+            $batch->refresh();
+
+            $percentage = $batch->total_rows > 0
+                ? (int) min(floor(($batch->processed_rows / $batch->total_rows) * 100), 100)
+                : 100;
+
             $batch->update([
-                'processed_rows' => $this->processedRows,
-                'percentage' => $percentage,
-                'last_log' => "Importing rows in progress",
-                'current_step' => 'processing',
+                'percentage'   => $percentage,
+                'last_log'     => "Importing rows in progress",
+                'current_step' => $percentage >= 100 ? 'completed' : 'processing',
             ]);
 
             event(new ImportProgressUpdated($batch));
@@ -561,24 +502,20 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             return null;
         }
 
-        // 1. Se já for um objeto DateTime/Carbon
         if ($value instanceof \DateTimeInterface) {
             return $value->format('Y-m-d');
         }
 
-        // 2. Se for Número Serial do Excel (ex: 46230) -> Converte matematicamente
         if (is_numeric($value)) {
             try {
                 $timestamp = ($value - 25569) * 86400;
                 return \Carbon\Carbon::createFromTimestamp($timestamp, 'UTC')->format('Y-m-d');
             } catch (\Throwable $e) {
-                // Se não for um número de data válido, ignora e tenta os passos abaixo
             }
         }
 
         $valueStr = trim((string) $value);
 
-        // 3. Se for string no formato brasileiro (ex: "27/07/2026")
         if (str_contains($valueStr, '/')) {
             try {
                 return \Carbon\Carbon::createFromFormat('d/m/Y', $valueStr)->format('Y-m-d');
@@ -587,7 +524,6 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             }
         }
 
-        // 4. Se for texto em formato ISO (ex: "2026-07-27")
         try {
             return \Carbon\Carbon::parse($valueStr)->format('Y-m-d');
         } catch (\Throwable $e) {
@@ -612,15 +548,11 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         ];
     }
 
-    /**
-     * Retorna as trocas processadas formatadas para o Controller passar à View/PDF do Blade.
-     */
     public function getTrocas(): array
     {
         $trocasFormatadas = [];
 
         foreach ($this->trocas as $clienteId => $dadosCliente) {
-            // Transforma o agrupamento temporário 'notas' na estrutura 'avarias' esperada pelo Blade
             $avarias = collect($dadosCliente['notas'])->map(function ($nota) {
                 return (object) [
                     'itens' => $nota['itens'],
