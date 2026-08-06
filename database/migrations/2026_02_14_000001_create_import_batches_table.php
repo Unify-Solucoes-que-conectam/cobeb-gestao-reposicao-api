@@ -10,7 +10,6 @@ return new class extends Migration
     {
         Schema::create('import_batches', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->foreignUuid('user_id')->constrained('usuarios')->cascadeOnDelete();
             $table->string('type');
             $table->string('status');
             $table->unsignedInteger('total_rows')->default(0);
@@ -20,7 +19,7 @@ return new class extends Migration
             $table->string('current_step')->nullable();
             $table->timestamps();
 
-            $table->index(['user_id', 'status']);
+            $table->index(['status']);
             $table->index(['type']);
         });
     }

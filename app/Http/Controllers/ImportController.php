@@ -49,7 +49,6 @@ class ImportController extends Controller
 
         try {
             $batch = ImportBatch::query()->create([
-                'user_id' => $user->id,
                 'type' => $request->input('type'),
                 'status' => 'pending',
                 'total_rows' => 0,
@@ -88,7 +87,6 @@ class ImportController extends Controller
         // Subquery para encontrar o maior ID (ou última data) para cada 'type'
         $latestIds = ImportBatch::query()
             ->selectRaw('MAX(id) as id')
-            ->where('user_id', $user->id)
             ->groupBy('type');
 
         // Query principal filtrando apenas os IDs obtidos na subquery
@@ -113,7 +111,6 @@ class ImportController extends Controller
 
         $batch = ImportBatch::query()
             ->where('id', $id)
-            ->where('user_id', $user->id)
             ->first();
 
         if (!$batch) {

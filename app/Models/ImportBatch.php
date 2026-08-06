@@ -16,7 +16,6 @@ class ImportBatch extends Model
   protected $keyType = 'string';
 
   protected $fillable = [
-    'user_id',
     'type',
     'status',
     'total_rows',
