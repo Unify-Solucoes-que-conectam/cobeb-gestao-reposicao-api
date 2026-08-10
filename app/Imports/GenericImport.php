@@ -238,7 +238,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     private function importMotorista(array $data): void
     {
-        $cpf             = trim((string) Arr::get($data, 'cpf'));
+        $cpf             = $this->normalizeCPF(trim((string) Arr::get($data, 'cpf')));
         $codigo          = trim((string) Arr::get($data, 'codmotorista'));
         $nome            = trim((string) Arr::get($data, 'nome_motorista'));
         $cod_cluster     = trim((string) Arr::get($data, 'codcluster'));
@@ -533,6 +533,24 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    private function normalizeCPF(string $cpf): string
+    {
+        // Remove todos os caracteres não-numéricos
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
+
+        // Um CPF válido tem 11 dígitos
+        if (strlen($cpfLimpo) > 11) {
+            throw new \RuntimeException("CPF inválido: contém mais de 11 dígitos ('{$cpf}')");
+        }
+
+        // Se tiver menos de 11 dígitos, adiciona zeros à esquerda
+        if (strlen($cpfLimpo) < 11) {
+            $cpfLimpo = str_pad($cpfLimpo, 11, '0', STR_PAD_LEFT);
+        }
+
+        return $cpfLimpo;
     }
 
     public function chunkSize(): int
