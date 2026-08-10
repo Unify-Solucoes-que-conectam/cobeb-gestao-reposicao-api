@@ -22,9 +22,6 @@ class ImportController extends Controller
     public function start(Request $request)
     {
         $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
 
         $validator = Validator::make($request->all(), [
             'type' => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
@@ -80,9 +77,6 @@ class ImportController extends Controller
     public function list(Request $request)
     {
         $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
 
         // Subquery para encontrar o maior ID (ou última data) para cada 'type'
         $latestIds = ImportBatch::query()
@@ -106,7 +100,7 @@ class ImportController extends Controller
     {
         $user = $request->user();
         if (!$user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
+            return response()->json(['message' => 'Usuário desconectado.'], 401);
         }
 
         $batch = ImportBatch::query()
