@@ -96,6 +96,16 @@ class MapasController extends Controller
                     }
                 ])->get();
 
+            // adicionar demais filtros na requisição
+            if ($request->has('search')) {
+                $search = $request->input('search');
+                $clientesMapa = $clientesMapa->filter(function ($clienteMapa) use ($search) {
+                    return str_contains(strtolower($clienteMapa->cliente->nome_fantasia), strtolower($search)) ||
+                           str_contains(strtolower($clienteMapa->cliente->razao_social), strtolower($search)) ||
+                            str_contains(strtolower($clienteMapa->cliente->codigo), strtolower($search));
+                });
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Clientes vinculados ao mapa carregados com sucesso.',
