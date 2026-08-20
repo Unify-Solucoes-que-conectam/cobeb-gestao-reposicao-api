@@ -21,6 +21,7 @@ class Notificacao extends Model
         'data_envio',
         'data_leitura',
         'menu_id',
+        'usuario_id',
     ];
 
     protected $casts = [

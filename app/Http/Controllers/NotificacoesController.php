@@ -69,6 +69,7 @@ class NotificacoesController extends Controller
         $notificacoes = Notificacao::query()
             ->with('menu')
             ->orderBy('data_envio', 'asc')
+            ->where('usuario_id', $user->id)
             ->get();
 
         return response()->json([
