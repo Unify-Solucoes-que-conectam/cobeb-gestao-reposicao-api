@@ -80,9 +80,10 @@ class AuthController extends Controller
 
             $notification = [
                 'id' => $notificationId,
-                'titulo' => 'Bem-vindo ao sistema de gestão de reposição, ' . ucwords(strtolower($user->nome)) . '!',
+                'titulo' => 'Bem-vindo ao sistema de gestão de reposição, ' . ucwords(explode(' ', strtolower($user->nome))[0]) . '!',
                 'mensagem' => 'Você está logado no sistema de monitoramento.',
                 'tipo' => 'info',
+                'usuario_id' => $user->id,
             ];
 
             // notificação de boas vindas, só aparece se a notificação ainda não foi enviada

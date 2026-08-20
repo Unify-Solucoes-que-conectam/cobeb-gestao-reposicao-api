@@ -417,7 +417,7 @@ class AvariasController extends Controller
 
             // Se não encontrou nenhum número válido, retorna erro
             if (!$clientePhone) {
-                Log::warning("Nenhum número de telefone válido encontrado para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
+                Log::warning("Nenhum número de telefone válido encontrado para o cliente {$avaria->cliente->razao_social} (ID: {$avaria->cliente->id}).");
                 return response()->json([
                     'success' => false,
                     'message' => "Avaria atualizada para {$request->status}, mas nenhum número de telefone válido foi encontrado para enviar notificação via WhatsApp.",
@@ -428,12 +428,12 @@ class AvariasController extends Controller
             if ($clientePhone && in_array($request->status, ['aprovada', 'reprovada'])) {
 
                 $mensagem = $request->status === 'aprovada'
-                    ? "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *aprovada* pela nossa equipe.\n\nO processo de substituição dos produtos avariados já está em andamento. Em caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*"
-                    : "Prezado(a) *{$avaria->cliente->nome_fantasia}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*TRC-{$avaria->id}* foi *reprovada* pela nossa equipe.\n\n*Motivo:* _{$avaria->motivo_reprovacao}_\n\nEm caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*";
+                    ? "Prezado(a) *{$avaria->cliente->razao_social}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*AVR-{$avaria->id}* foi *aprovada* pela nossa equipe.\n\nO processo de substituição dos produtos avariados já está em andamento. Em caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*"
+                    : "Prezado(a) *{$avaria->cliente->razao_social}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*AVR-{$avaria->id}* foi *reprovada* pela nossa equipe.\n\n*Motivo:* _{$avaria->motivo_reprovacao}_\n\nEm caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*";
                 $sent = $whatsapp->sendMessage($clientePhone, $mensagem);
 
                 if (!$sent) {
-                    Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->nome_fantasia} (ID: {$avaria->cliente->id}).");
+                    Log::warning("Falha ao enviar mensagem de WhatsApp para o cliente {$avaria->cliente->razao_social} (ID: {$avaria->cliente->id}).");
                     return response()->json([
                         'success' => false,
                         'message' => "Avaria atualizada para {$request->status}, mas falha ao enviar notificação via WhatsApp.",

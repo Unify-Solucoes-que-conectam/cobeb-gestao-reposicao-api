@@ -27,12 +27,16 @@ class MotoristasController extends Controller
             });
         }
 
+        // filtrar por cluster
+        if ($request->filled('cluster')) {
+            $query->where('cluster_id', $request->input('cluster'));
+        }
+
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
 
         $motoristas = $query->with([
-            'mapaAtual',
             'usuario',
             'filial',
             'cluster'

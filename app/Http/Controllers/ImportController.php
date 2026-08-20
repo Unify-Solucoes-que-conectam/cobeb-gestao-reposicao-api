@@ -8,6 +8,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class ImportController extends Controller
 {
@@ -22,19 +23,18 @@ class ImportController extends Controller
     public function start(Request $request)
     {
         $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
 
         $validator = Validator::make($request->all(), [
-            'type' => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
-            'file' => ['required', 'file', 'mimes:csv,xlsx,xls', 'max:10240'],
+            'type'      => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
+            'records'   => ['required', 'array', 'min:1', 'max:5000'],
+            'records.*' => ['required', 'array'],
         ], [
-            'type.required' => 'Type is required.',
-            'type.in' => 'Type is invalid.',
-            'file.required' => 'File is required.',
-            'file.mimes' => 'File must be CSV or Excel.',
-            'file.max' => 'File size must not exceed 10MB.',
+            'type.required'    => 'Type is required.',
+            'type.in'          => 'Type is invalid.',
+            'records.required' => 'Records are required.',
+            'records.array'    => 'Records must be an array.',
+            'records.min'      => 'At least one record is required.',
+            'records.max'      => 'Maximum of 5000 records per import.',
         ]);
 
         if ($validator->fails()) {
@@ -44,21 +44,21 @@ class ImportController extends Controller
             ], 422);
         }
 
-        // Salva o arquivo no storage
-        $path = $request->file('file')->store('imports');
+        $records = $request->input('records');
+        $path    = 'imports/' . Str::uuid() . '.json';
+        Storage::put($path, json_encode($records));
 
         try {
             $batch = ImportBatch::query()->create([
-                'type' => $request->input('type'),
-                'status' => 'pending',
-                'total_rows' => 0,
+                'type'           => $request->input('type'),
+                'status'         => 'pending',
+                'total_rows'     => count($records),
                 'processed_rows' => 0,
-                'percentage' => 0,
-                'last_log' => 'Queued',
-                'current_step' => 'queued',
+                'percentage'     => 0,
+                'last_log'       => 'Queued',
+                'current_step'   => 'queued',
             ]);
 
-            // Dispara o Job na fila 'imports'
             ProcessImportJob::dispatch($batch->id, $path, $batch->type)
                 ->onQueue('imports');
 
@@ -67,7 +67,6 @@ class ImportController extends Controller
                 'data' => $batch,
             ]);
         } catch (Exception $e) {
-            // Se der erro ao criar no banco ou na fila, remove o arquivo salvo
             Storage::delete($path);
 
             return response()->json([
@@ -80,9 +79,6 @@ class ImportController extends Controller
     public function list(Request $request)
     {
         $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
 
         // Subquery para encontrar o maior ID (ou última data) para cada 'type'
         $latestIds = ImportBatch::query()
@@ -106,7 +102,7 @@ class ImportController extends Controller
     {
         $user = $request->user();
         if (!$user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
+            return response()->json(['message' => 'Usuário desconectado.'], 401);
         }
 
         $batch = ImportBatch::query()

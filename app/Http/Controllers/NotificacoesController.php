@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use Illuminate\Support\Str;
 use App\Events\GlobalEvent;
 use App\Http\Controllers\Controller;
@@ -65,15 +66,11 @@ class NotificacoesController extends Controller
 
         $user = $request->user();
 
-        if (!$user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
-
         $notificacoes = Notificacao::query()
             ->with('menu')
             ->orderBy('data_envio', 'asc')
-            ->get()
-        ;
+            ->where('usuario_id', $user->id)
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -97,8 +94,7 @@ class NotificacoesController extends Controller
 
             $notificacoes = Notificacao::query()
                 ->whereIn('id', $request->input('id'))
-                ->get()
-            ;
+                ->get();
 
             foreach ($notificacoes as $notificacao) {
                 if ($notificacao->usuario_id === $request->user()->id) {

@@ -20,15 +20,10 @@ use App\Models\TipoMarca;
 use App\Models\Troca;
 use App\Models\Usuario;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
-use Maatwebsite\Excel\Concerns\ToCollection;
-use Maatwebsite\Excel\Concerns\WithChunkReading;
-use Maatwebsite\Excel\Concerns\WithCustomCsvSettings;
-use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
-class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, WithCustomCsvSettings
+class GenericImport
 {
     private string $batchId;
     private string $type;
@@ -46,30 +41,28 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         $this->totalRows = $totalRows;
     }
 
-    public function collection(Collection $rows): void
+    public function processRecords(array $records): void
     {
-        $chunkProcessed = 0;
+        foreach (array_chunk($records, 100) as $chunk) {
+            $chunkProcessed = 0;
 
-        foreach ($rows as $row) {
-            $data = $row->toArray();
+            foreach ($chunk as $data) {
+                try {
+                    $this->importRow($data);
+                } catch (\Throwable $exception) {
+                    $this->errorCount++;
 
-            try {
-                $this->importRow($data);
-            } catch (\Throwable $exception) {
-                $this->errorCount++;
-
-                Log::warning('Import row failed', [
-                    'batch_id' => $this->batchId,
-                    'error'    => $exception->getMessage(),
-                ]);
-            } finally {
+                    Log::warning('Import row failed', [
+                        'batch_id' => $this->batchId,
+                        'error'    => $exception->getMessage(),
+                    ]);
+                }
                 $chunkProcessed++;
                 $this->processedRows++;
             }
-        }
 
-        // Incrementa atomicamente no banco para não perder o progresso de chunks anteriores
-        $this->updateProgress($chunkProcessed);
+            $this->updateProgress($chunkProcessed);
+        }
     }
 
     private function importRow(array $data): void
@@ -238,7 +231,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
 
     private function importMotorista(array $data): void
     {
-        $cpf             = trim((string) Arr::get($data, 'cpf'));
+        $cpf             = $this->normalizeCPF(trim((string) Arr::get($data, 'cpf')));
         $codigo          = trim((string) Arr::get($data, 'codmotorista'));
         $nome            = trim((string) Arr::get($data, 'nome_motorista'));
         $cod_cluster     = trim((string) Arr::get($data, 'codcluster'));
@@ -246,6 +239,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         $cod_filial      = trim((string) Arr::get($data, 'codfilial'));
         $data_admissao   = trim((string) Arr::get($data, 'data_admissao'));
         $data_inativacao = trim((string) Arr::get($data, 'data_inativacao'));
+        $status          = trim((string) Arr::get($data, 'status'));
 
         if (blank($codigo) || blank($nome)) {
             throw new \RuntimeException('Missing codigo or nome');
@@ -265,6 +259,8 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
                 'primeiro_acesso' => true,
             ]
         );
+
+        Log::info($cpf);
 
         Motorista::updateOrCreate(
             ['codigo' => $codigo],
@@ -383,6 +379,8 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             return;
         }
 
+        Log::info($this->toDate($dataOperacao));
+
         Troca::updateOrCreate(
             [
                 'produto_nota_fiscal_id' => $produtoNotaFiscal->id,
@@ -404,7 +402,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         $produtoNotaFiscal->load(['produto', 'notaFiscal']);
 
         if (!isset($this->trocas[$cliente->id])) {
-            $cliente->nome = $cliente->nome_fantasia ?: $cliente->razao_social;
+            $cliente->nome = $cliente->razao_social ?: $cliente->nome_fantasia;
 
             $doc = preg_replace('/[^0-9]/', '', (string) $cliente->documento);
             if (strlen($doc) === 11) {
@@ -425,7 +423,7 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
                     'telefone' => $cliente->numero,
                     'endereco' => $cliente->endereco . ($cliente->complemento ? ' - ' . $cliente->complemento : '') . ', ' . $cliente->bairro . ', ' . $cliente->cidade . '/' . $cliente->uf . ' - CEP: ' . $cliente->cep,
                 ],
-                'protocolo'      => 'TRC-' . now()->format('YmdHis') . '-' . $cliente->id,
+                'protocolo'      => 'TRC-' . $notaFiscal->numero,
                 'contatoCliente' => $cliente->numero,
                 'data_operacao'  => $this->toDate($dataOperacao),
                 'notas'          => [],
@@ -524,10 +522,41 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
             try {
                 return \Carbon\Carbon::createFromFormat('d/m/Y', $valueStr)->format('Y-m-d');
             } catch (\Throwable $e) {
-                return null;
+                // Continue to other formats
             }
         }
 
+        // Tenta parsear formatos comuns de data
+        $formats = [
+            'Y-m-d H:i:s',
+            'd/m/Y H:i:s',
+            'm/d/Y H:i:s',
+            'Y-m-d',
+            'd/m/Y',
+            'm/d/Y',
+            'D M d Y H:i:s', // Thu Aug 20 2026 00:00:28
+        ];
+
+        foreach ($formats as $format) {
+            try {
+                return \Carbon\Carbon::createFromFormat($format, $valueStr)->format('Y-m-d');
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+
+        // Tenta parsear com strtotime (mais flexível)
+        try {
+            // Remove timezone info se houver (ex: GMT-0300 (Horário Padrão de Brasília))
+            $cleanStr = preg_replace('/\s+GMT[\+\-]\d{4}\s*\([^)]*\)/', '', $valueStr);
+            $timestamp = strtotime($cleanStr);
+            if ($timestamp !== false) {
+                return date('Y-m-d', $timestamp);
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // Último recurso: tenta Carbon::parse()
         try {
             return \Carbon\Carbon::parse($valueStr)->format('Y-m-d');
         } catch (\Throwable $e) {
@@ -535,21 +564,28 @@ class GenericImport implements ToCollection, WithChunkReading, WithHeadingRow, W
         }
     }
 
-    public function chunkSize(): int
+    private function normalizeCPF(string $cpf): string
     {
-        return 500;
+        if (blank($cpf)) {
+            return '';
+        }
+
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
+
+        if (strlen($cpfLimpo) > 11) {
+            throw new \RuntimeException("CPF inválido: contém mais de 11 dígitos ('{$cpf}')");
+        }
+
+        if (strlen($cpfLimpo) < 11) {
+            $cpfLimpo = str_pad($cpfLimpo, 11, '0', STR_PAD_LEFT);
+        }
+
+        return $cpfLimpo;
     }
 
     public function getErrorCount(): int
     {
         return $this->errorCount;
-    }
-
-    public function getCsvSettings(): array
-    {
-        return [
-            'delimiter' => ';',
-        ];
     }
 
     public function getTrocas(): array
