@@ -105,6 +105,22 @@ stdout_logfile=/var/log/worker-imports.log
 stderr_logfile=/var/log/worker-imports.log
 '''
 
+"worker-imports.conf" = '''
+[program:worker-imports]
+process_name=%(program_name)s_%(process_num)02d
+command=bash -c 'exec php /app/artisan queue:work --queue=whatsapp --sleep=3 --tries=3 --max-time=3600 --memory=256 --timeout=600'
+user=www-data
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+numprocs=1
+startsecs=0
+stopwaitsecs=3600
+stdout_logfile=/var/log/worker-imports.log
+stderr_logfile=/var/log/worker-imports.log
+'''
+
 "worker-reverb.conf" = '''
 [program:worker-reverb]
 process_name=%(program_name)s_%(process_num)02d
