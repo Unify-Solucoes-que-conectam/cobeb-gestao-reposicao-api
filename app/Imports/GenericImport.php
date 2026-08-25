@@ -326,7 +326,7 @@ class GenericImport
 
     private function importVendaTroca(array $data): void
     {
-        $numero       = trim((string) Arr::get($data, 'nota'));
+        $numero       = trim((string) Arr::get($data, 'nota_fiscal'));
         $pedido       = trim((string) Arr::get($data, 'nr_pedido'));
         $codCliente   = trim((string) Arr::get($data, 'cliente'));
         $dataOperacao = trim((string) Arr::get($data, 'dt_operacao'));
@@ -334,9 +334,9 @@ class GenericImport
         $data_emissao = trim((string) Arr::get($data, 'emissao'));
 
         $produto        = trim((string) Arr::get($data, 'produto'));
-        $quantidade     = (int) Arr::get($data, 'qtde');
+        $quantidade     = (int) Arr::get($data, 'quantidade');
         $valorDesconto  = $this->toDecimal(Arr::get($data, 'desconto'));
-        $valorAdicional = $this->toDecimal(Arr::get($data, 'adic_finan'));
+        $valorAdicional = $this->toDecimal(Arr::get($data, 'adic_fina'));
         $valorTotal     = $this->toDecimal(Arr::get($data, 'total'));
 
         if (blank($numero)) {
