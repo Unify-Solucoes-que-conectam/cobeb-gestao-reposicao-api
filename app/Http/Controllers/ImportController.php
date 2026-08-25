@@ -24,10 +24,10 @@ class ImportController extends Controller
     {
         $user = $request->user();
 
-        $validator = Validator::make($request->all(), [
-            'type'      => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
-            'records'   => ['required', 'array', 'min:1', 'max:5000'],
-            'records.*' => ['required', 'array'],
+        // 1. Valide apenas os campos de nível superior e evite o $request->all()
+        $validator = Validator::make($request->only(['type', 'records']), [
+            'type'    => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
+            'records' => ['required', 'array', 'min:1', 'max:5000'], // Removido 'records.*'
         ], [
             'type.required'    => 'Type is required.',
             'type.in'          => 'Type is invalid.',
@@ -40,13 +40,15 @@ class ImportController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
         $records = $request->input('records');
         $path    = 'imports/' . Str::uuid() . '.json';
-        Storage::put($path, json_encode($records));
+
+        // 2. Salva o JSON no disco
+        Storage::put($path, json_encode($records, JSON_UNESCAPED_UNICODE));
 
         try {
             $batch = ImportBatch::query()->create([
@@ -64,7 +66,7 @@ class ImportController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $batch,
+                'data'    => $batch,
             ]);
         } catch (Exception $e) {
             Storage::delete($path);
