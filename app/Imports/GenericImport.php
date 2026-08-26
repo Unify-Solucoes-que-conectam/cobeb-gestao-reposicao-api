@@ -93,8 +93,8 @@ class GenericImport
         $cep          = trim((string) Arr::get($data, 'cep'));
         $filial       = trim((string) Arr::get($data, 'filial'));
         $descCategoria = trim((string) Arr::get($data, 'categoria'));
-        $tipoPessoa   = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Arr::get($data, 'tipo_de_pessoa')));
-        $status       = trim((string) Str::lower(Arr::get($data, 'status_do_pdv')));
+        $tipoPessoa   = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Str::lower(Arr::get($data, 'tipo_pessoa'))));
+        $status       = trim((string) Str::lower(Arr::get($data, 'status')));
 
         if (blank($codigo) || blank($nomeFantasia)) {
             throw new \RuntimeException('Faltando Cód PDV ou Nome Fantasia');

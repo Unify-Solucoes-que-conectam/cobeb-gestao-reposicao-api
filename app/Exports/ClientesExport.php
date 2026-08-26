@@ -47,7 +47,7 @@ class ClientesExport implements FromArray, WithHeadings, WithEvents, WithStyles,
         return [
             [
                 '1',
-                '12345678901',
+                '04.367.690/0001-72',
                 'Mercado Central',
                 'Mercado Central LTDA',
                 'Rua das Flores, 123',
