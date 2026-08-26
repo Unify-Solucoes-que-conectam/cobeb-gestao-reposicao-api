@@ -27,14 +27,14 @@ class ImportController extends Controller
         // 1. Valide apenas os campos de nível superior e evite o $request->all()
         $validator = Validator::make($request->only(['type', 'records']), [
             'type'    => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
-            'records' => ['required', 'array', 'min:1', 'max:5000'], // Removido 'records.*'
+            'records' => ['required', 'array', 'min:1', 'max:20000'], // Removido 'records.*'
         ], [
             'type.required'    => 'Type is required.',
             'type.in'          => 'Type is invalid.',
             'records.required' => 'Records are required.',
             'records.array'    => 'Records must be an array.',
             'records.min'      => 'At least one record is required.',
-            'records.max'      => 'Maximum of 5000 records per import.',
+            'records.max'      => 'Maximum of 20000 records per import.',
         ]);
 
         if ($validator->fails()) {

@@ -20,8 +20,8 @@ use App\Models\TipoMarca;
 use App\Models\Troca;
 use App\Models\Usuario;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class GenericImport
 {
@@ -93,8 +93,8 @@ class GenericImport
         $cep          = trim((string) Arr::get($data, 'cep'));
         $filial       = trim((string) Arr::get($data, 'filial'));
         $descCategoria = trim((string) Arr::get($data, 'categoria'));
-        $tipoPessoa   = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Arr::get($data, 'tipo_de_pessoa')));
-        $status       = trim((string) Str::lower(Arr::get($data, 'status_do_pdv')));
+        $tipoPessoa   = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Str::lower(Arr::get($data, 'tipo_pessoa'))));
+        $status       = trim((string) Str::lower(Arr::get($data, 'status')));
 
         if (blank($codigo) || blank($nomeFantasia)) {
             throw new \RuntimeException('Faltando Cód PDV ou Nome Fantasia');
@@ -260,8 +260,6 @@ class GenericImport
             ]
         );
 
-        Log::info($cpf);
-
         Motorista::updateOrCreate(
             ['codigo' => $codigo],
             [
@@ -378,8 +376,6 @@ class GenericImport
         if (!in_array((int) $operacao, [5, 39], true) && !in_array($operacao, ['5', '39'], true)) {
             return;
         }
-
-        Log::info($this->toDate($dataOperacao));
 
         Troca::updateOrCreate(
             [
