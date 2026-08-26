@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Models\Cluster;
 use App\Models\Filial;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
@@ -14,30 +15,22 @@ use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 
-class ClientesExport implements FromArray, WithHeadings, WithEvents, WithStyles, WithColumnWidths
+class MotoristasExport implements FromArray, WithHeadings, WithEvents, WithStyles, WithColumnWidths
 {
 
     public function headings(): array
     {
         /**
-         * Cód PDV, Documento, Nome Fantasia, Razão Social, Endereço, Complemento, Bairro, Cidade, UF, CEP, Filial, Categoria, Tipo de Pessoa, Status do PDV, Telefone(s)
+         * CPF, Cód.Motorista, Nome Motorista, Cód.Cluster, Cód.Filial, Data Admissão, Data Inativação
          */
         return [
-            'Cód PDV',
-            'Documento',
-            'Nome Fantasia',
-            'Razão Social',
-            'Endereço',
-            'Complemento',
-            'Bairro',
-            'Cidade',
-            'UF',
-            'CEP',
-            'Filial',
-            'Categoria',
-            'Tipo de Pessoa',
-            'Status do PDV',
-            'Telefone(s)',
+            'CPF',
+            'Cód.Motorista',
+            'Nome Motorista',
+            'Cód.Cluster',
+            'Cód.Filial',
+            'Data Admissão',
+            'Data Inativação'
         ];
     }
 
@@ -46,21 +39,13 @@ class ClientesExport implements FromArray, WithHeadings, WithEvents, WithStyles,
 
         return [
             [
-                '1',
                 '12345678901',
-                'Mercado Central',
-                'Mercado Central LTDA',
-                'Rua das Flores, 123',
-                'Sala 1',
-                'Centro',
-                'São Paulo',
-                'SP',
-                '01.000-000',
                 '1',
-                'MERCADO',
-                'Física',
-                'Ativo',
-                '37 9999-9999 | 37 3232-0000 | 37 99999-9999'
+                'João da Silva',
+                '10',
+                '1',
+                '01/01/2026',
+                '01/01/2026'
             ]
         ];
     }
@@ -85,13 +70,13 @@ class ClientesExport implements FromArray, WithHeadings, WithEvents, WithStyles,
 
     public function registerEvents(): array
     {
+        $clusters = Cluster::all();
         $filiais = Filial::all();
 
         // Mapeia a coluna para suas respectivas opções
         $validacoes = [
-            'K' => '"' . $filiais->pluck('codigo')->implode(',') . '"',
-            'M' => '"Jurídica,Física"',
-            'N' => '"Ativo,Inativo"',
+            'D' => '"' . $clusters->pluck('codigo')->implode(',') . '"',
+            'E' => '"' . $filiais->pluck('codigo')->implode(',') . '"',
         ];
 
         return [
@@ -117,21 +102,13 @@ class ClientesExport implements FromArray, WithHeadings, WithEvents, WithStyles,
     public function columnWidths(): array
     {
         return [
-            'A' => 10, // Cód PDV
-            'B' => 20, // Documento
-            'C' => 30, // Nome Fantasia
-            'D' => 30, // Razão Social
-            'E' => 40, // Endereço
-            'F' => 20, // Complemento
-            'G' => 20, // Bairro
-            'H' => 20, // Cidade
-            'I' => 5,  // UF
-            'J' => 10, // CEP
-            'K' => 10, // Filial
-            'L' => 20, // Categoria
-            'M' => 20, // Tipo de Pessoa
-            'N' => 15, // Status do PDV
-            'O' => 80, // Telefone(s)
+            'A' => 15, // CPF
+            'B' => 15, // Cód.Motorista
+            'C' => 30, // Nome Motorista
+            'D' => 15, // Cód.Cluster
+            'E' => 15, // Cód.Filial
+            'F' => 20, // Data Admissão
+            'G' => 20, // Data Inativação
         ];
     }
 }
