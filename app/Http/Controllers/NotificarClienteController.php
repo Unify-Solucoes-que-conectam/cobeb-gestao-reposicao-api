@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EnviarMensagemWhatsAppJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Support\WhatsAppService;
 
 class NotificarClienteController extends Controller
 {
@@ -22,20 +22,11 @@ class NotificarClienteController extends Controller
 
         $phone = preg_replace('/\D/', '', $request->phone);
 
-        // Enviar via WhatsApp
-        $whatsapp = new WhatsAppService();
-        $sent = $whatsapp->sendMessage($phone, $request->text);
-
-        if (!$sent) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao enviar mensagem. Tente novamente.'
-            ], 500);
-        }
+        EnviarMensagemWhatsAppJob::dispatch($phone, 'text', $request->text);
 
         return response()->json([
             'success' => true,
-            'message' => 'Mensagem enviada.',
-        ]);
+            'message' => 'Mensagem enfileirada para envio.',
+        ], 202);
     }
 }
