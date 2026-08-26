@@ -28,9 +28,11 @@ class MotoristasExport implements FromArray, WithHeadings, WithEvents, WithStyle
             'Cód.Motorista',
             'Nome Motorista',
             'Cód.Cluster',
+            'Cluster',
             'Cód.Filial',
             'Data Admissão',
-            'Data Inativação'
+            'Data Inativação',
+            'Status'
         ];
     }
 
@@ -43,9 +45,11 @@ class MotoristasExport implements FromArray, WithHeadings, WithEvents, WithStyle
                 '1',
                 'João da Silva',
                 '10',
+                'Caminhão',
                 '1',
                 '01/01/2026',
-                '01/01/2026'
+                '01/01/2026',
+                'Ativo'
             ]
         ];
     }
@@ -72,11 +76,13 @@ class MotoristasExport implements FromArray, WithHeadings, WithEvents, WithStyle
     {
         $clusters = Cluster::all();
         $filiais = Filial::all();
+        $status = ['Ativo', 'Inativo', 'Bloqueado'];
 
         // Mapeia a coluna para suas respectivas opções
         $validacoes = [
             'D' => '"' . $clusters->pluck('codigo')->implode(',') . '"',
-            'E' => '"' . $filiais->pluck('codigo')->implode(',') . '"',
+            'F' => '"' . $filiais->pluck('codigo')->implode(',') . '"',
+            'I' => '"' . implode(',', $status) . '"',
         ];
 
         return [
@@ -106,9 +112,11 @@ class MotoristasExport implements FromArray, WithHeadings, WithEvents, WithStyle
             'B' => 15, // Cód.Motorista
             'C' => 30, // Nome Motorista
             'D' => 15, // Cód.Cluster
-            'E' => 15, // Cód.Filial
-            'F' => 20, // Data Admissão
-            'G' => 20, // Data Inativação
+            'E' => 15, // Cluster
+            'F' => 15, // Cód.Filial
+            'G' => 20, // Data Admissão
+            'H' => 20, // Data Inativação
+            'I' => 15, // Status
         ];
     }
 }
