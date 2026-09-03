@@ -21,6 +21,8 @@ class AvariaResource extends JsonResource
             'aprovador' => new UsuarioResource($this->whenLoaded('aprovador')),
             'data_aprovacao' => $this->data_aprovacao,
             'motivo_reprovacao' => $this->motivo_reprovacao,
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
             'nota_fiscal' => NotaFiscalResource::make($this->nota_fiscal),
             'itens' => ItemAvariaResource::collection($this->whenLoaded('itens')),
             'anexos' => $this->whenLoaded('anexos') ? AnexosAvariaResource::collection($this->anexos) : [],
