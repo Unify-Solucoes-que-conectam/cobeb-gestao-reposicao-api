@@ -21,6 +21,7 @@ class Menu extends Model
         'rota',
         'ordem',
         'menu_pai_id',
+        'required_role',
     ];
 
     public function menu_pai()

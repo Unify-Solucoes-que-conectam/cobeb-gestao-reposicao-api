@@ -10,14 +10,13 @@ use App\Notifications\UserNotification;
 // use App\Services\GoogleAuthService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
-use Symfony\Component\HttpFoundation\JsonResponse;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as RulesPassword;
+use Symfony\Component\HttpFoundation\JsonResponse;
 
 class AuthController extends Controller
 {
-
     /**
      * Gera e retorna um token único para o usuário, removendo tokens antigos.
      *
@@ -49,7 +48,8 @@ class AuthController extends Controller
         // Busca o usuário pelo campo 'cpf'
         $user = Usuario::query()
             ->where('cpf', $payload['cpf'])
-            ->first();
+            ->first()
+        ;
 
         // Verifica se o usuário existe e está ativo
         if (!$user) {
@@ -73,8 +73,7 @@ class AuthController extends Controller
         $token = $this->generateToken($user, $tokenName);
 
         // notificação apenas para usuários do monitoramento
-        if ($user->role === 'monitoramento') {
-
+        if (in_array($user->role, ['administrador', 'monitoramento'], true)) {
             // gerar uuid para a notificação
             $notificationId = (string) Str::uuid();
 
@@ -97,7 +96,18 @@ class AuthController extends Controller
             }
         }
 
-        $menus = Menu::with('subMenus')->whereNull('menu_pai_id')->get();
+        $visible = fn($query) => $query
+            ->whereNull('required_role')
+            ->orWhere('required_role', $user->role)
+        ;
+
+        $menus = Menu::query()
+            ->with(['subMenus' => $visible])
+            ->whereNull('menu_pai_id')
+            ->where($visible)
+            ->orderBy('ordem')
+            ->get()
+        ;
 
         return response()->json([
             'success' => true,
@@ -160,7 +170,6 @@ class AuthController extends Controller
     // função para redefinir a senha do usuário
     public function resetPassword(Request $request, $id)
     {
-
         // configurar regras de validação
         $rules = [
             'senha_antiga' => ['required'],
@@ -183,7 +192,7 @@ class AuthController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -195,7 +204,7 @@ class AuthController extends Controller
             if (!$usuario) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Usuário não encontrado.'
+                    'message' => 'Usuário não encontrado.',
                 ]);
             }
 
@@ -203,7 +212,7 @@ class AuthController extends Controller
             if (!Hash::check($request->senha_antiga, $usuario->senha)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'A senha antiga está incorreta.'
+                    'message' => 'A senha antiga está incorreta.',
                 ]);
             }
 
@@ -218,12 +227,13 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Senha alterada com sucesso.'
+                'message' => 'Senha alterada com sucesso.',
             ]);
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao alterar a senha: ' . $e->getMessage()
+                'message' => 'Erro ao alterar a senha: ' . $e->getMessage(),
             ]);
         }
     }

@@ -2,13 +2,12 @@
 
 namespace App\Jobs;
 
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Jobs\EnviarMensagemWhatsAppJob;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 
 class ProcessarRelatorioAvariaJob implements ShouldQueue
@@ -16,18 +15,25 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected $avarias;
+
     protected $cliente;
+
     protected $contatoCliente;
+
     protected $protocolo;
+
     protected $mensagem;
 
-    public function __construct($avarias, $cliente, $contatoCliente, $protocolo, $mensagem = null)
+    protected string $filialId;
+
+    public function __construct($avarias, $cliente, $contatoCliente, $protocolo, string $filialId, $mensagem = null)
     {
         $this->avarias = $avarias;
         $this->cliente = $cliente;
         $this->contatoCliente = $contatoCliente;
         $this->protocolo = $protocolo;
         $this->mensagem = $mensagem;
+        $this->filialId = $filialId;
     }
 
     public function handle(): void
@@ -38,8 +44,8 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
 
         $data = [
             'protocolo' => $this->protocolo,
-            'cliente'   => $this->cliente,
-            'avarias'   => $this->avarias,
+            'cliente' => $this->cliente,
+            'avarias' => $this->avarias,
         ];
 
         $pdf = Pdf::loadView('pdf.avarias', $data);
@@ -48,11 +54,14 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
         Storage::put($nomeArquivo, $pdf->output());
 
         $horario = (int) now()->format('H');
+
         if ($horario >= 5 && $horario < 12) {
             $saudacao = 'Bom dia';
-        } elseif ($horario >= 12 && $horario < 18) {
+        }
+        elseif ($horario >= 12 && $horario < 18) {
             $saudacao = 'Boa tarde';
-        } else {
+        }
+        else {
             $saudacao = 'Boa noite';
         }
 
@@ -62,6 +71,15 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
 
         $phone = $this->contatoCliente->numero ?? $this->contatoCliente;
 
-        EnviarMensagemWhatsAppJob::dispatch($phone, 'media', $caption, $nomeArquivo, basename($nomeArquivo));
+        EnviarMensagemWhatsAppJob::dispatch(
+            $this->filialId,
+            $phone,
+            'media',
+            $caption,
+            $nomeArquivo,
+            basename($nomeArquivo),
+            'import_report',
+            [$this->cliente->nome, $this->protocolo],
+        );
     }
 }

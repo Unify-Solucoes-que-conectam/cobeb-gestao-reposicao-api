@@ -39,4 +39,9 @@ class Filial extends Model
             'descricao.required' => 'A descrição da filial é obrigatória.',
         ];
     }
+
+    public function whatsappConfiguration()
+    {
+        return $this->hasOne(WhatsAppConfiguration::class);
+    }
 }

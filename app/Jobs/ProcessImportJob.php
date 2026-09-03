@@ -18,7 +18,9 @@ class ProcessImportJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     private string $batchId;
+
     private string $path;
+
     private string $type;
 
     public $timeout = 600;
@@ -33,77 +35,80 @@ class ProcessImportJob implements ShouldQueue
     public function handle(): void
     {
         $batch = ImportBatch::query()->find($this->batchId);
+
         if (!$batch) {
             return;
         }
 
         $batch->update([
-            'status'         => 'processing',
+            'status' => 'processing',
             'processed_rows' => 0,
-            'percentage'     => 0,
-            'current_step'   => 'importing',
-            'last_log'       => 'Starting import',
+            'percentage' => 0,
+            'current_step' => 'importing',
+            'last_log' => 'Starting import',
         ]);
         event(new ImportProgressUpdated($batch));
 
         $fullPath = Storage::path($this->path);
-        $records  = json_decode(file_get_contents($fullPath), true) ?? [];
+        $records = json_decode(file_get_contents($fullPath), true) ?? [];
         $totalRows = count($records);
 
         try {
             if ($totalRows === 0) {
                 $batch->update([
-                    'status'       => 'failed',
+                    'status' => 'failed',
                     'current_step' => 'empty',
-                    'last_log'     => 'No records to import.',
+                    'last_log' => 'No records to import.',
                 ]);
                 event(new ImportProgressUpdated($batch->fresh()));
+
                 return;
             }
 
             $import = new GenericImport($this->batchId, $this->type, $totalRows);
             $import->processRecords($records);
 
-            $errorCount   = $import->getErrorCount();
+            $errorCount = $import->getErrorCount();
             $successCount = $totalRows - $errorCount;
 
             if ($errorCount === $totalRows) {
                 $batch->update([
-                    'status'         => 'failed',
+                    'status' => 'failed',
                     'processed_rows' => $totalRows,
-                    'percentage'     => 100,
-                    'current_step'   => 'failed',
-                    'last_log'       => "All {$totalRows} rows failed. Check logs for details.",
+                    'percentage' => 100,
+                    'current_step' => 'failed',
+                    'last_log' => "All {$totalRows} rows failed. Check logs for details.",
                 ]);
-            } else {
+            }
+            else {
                 $batch->update([
-                    'status'         => 'completed',
+                    'status' => 'completed',
                     'processed_rows' => $totalRows,
-                    'percentage'     => 100,
-                    'current_step'   => 'done',
-                    'last_log'       => $errorCount > 0
+                    'percentage' => 100,
+                    'current_step' => 'done',
+                    'last_log' => $errorCount > 0
                         ? "Completed: {$successCount} imported, {$errorCount} errors"
                         : "Import completed — {$successCount} rows imported",
                 ]);
 
                 if ($this->type === 'vendas_trocas' && !empty($import->getTrocas())) {
-
                     $trocas = $import->getTrocas();
 
                     foreach ($trocas as $dadosRelatorio) {
-
-
                         $dtOperacao = $dadosRelatorio['data_operacao'] ?? now()->format('d/m/Y');
                         $cliente = $dadosRelatorio['cliente'] ?? null;
                         $avarias = $dadosRelatorio['avarias'] ?? [];
 
                         // Dispara o job para processar o relatório de avarias
                         $horario = now()->format('H');
+
                         if ($horario >= 5 && $horario < 12) {
                             $saudacao = 'Bom dia';
-                        } elseif ($horario >= 12 && $horario < 18) {
+                        }
+                        elseif ($horario >= 12 && $horario < 18) {
                             $saudacao = 'Boa tarde';
-                        } else {
+                        }
+                        else {
                             $saudacao = 'Boa noite';
                         }
 
@@ -111,20 +116,30 @@ class ProcessImportJob implements ShouldQueue
                         $contatoCliente = $dadosRelatorio['contatoCliente'] ?? '';
                         $protocolo = $dadosRelatorio['protocolo'] ?? null;
 
-                        ProcessarRelatorioAvariaJob::dispatch($avarias, $cliente, $contatoCliente, $protocolo, $mensagem)
-                            ->onQueue('imports');
+                        ProcessarRelatorioAvariaJob::dispatch(
+                            $avarias,
+                            $cliente,
+                            $contatoCliente,
+                            $protocolo,
+                            $dadosRelatorio['filial_id'],
+                            $mensagem,
+                        )
+                            ->onQueue('imports')
+                        ;
                     }
                 }
             }
             event(new ImportProgressUpdated($batch->fresh()));
-        } catch (\Throwable $exception) {
+        }
+        catch (\Throwable $exception) {
             $batch->update([
-                'status'       => 'failed',
+                'status' => 'failed',
                 'current_step' => 'failed',
-                'last_log'     => 'Import failed: ' . $exception->getMessage(),
+                'last_log' => 'Import failed: ' . $exception->getMessage(),
             ]);
             event(new ImportProgressUpdated($batch->fresh()));
-        } finally {
+        }
+        finally {
             Storage::delete($this->path);
         }
     }

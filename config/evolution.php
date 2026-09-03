@@ -3,7 +3,11 @@
 return [
     'base_url' => env('EVOLUTION_API_URL', 'http://localhost:8080'),
     'api_key' => env('EVOLUTION_API_KEY', ''),
-    'instance' => env('EVOLUTION_INSTANCE', ''),
+    'meta_webhook_url' => env('EVOLUTION_META_WEBHOOK_URL'),
+    'meta_webhook_token' => env('EVOLUTION_META_WEBHOOK_TOKEN'),
+    'timeout' => env('EVOLUTION_TIMEOUT', 20),
+    'connect_timeout' => env('EVOLUTION_CONNECT_TIMEOUT', 5),
+    'qrcode_expires_in' => env('EVOLUTION_QRCODE_EXPIRES_IN', 60),
 
     /*
     |--------------------------------------------------------------------------

@@ -19,6 +19,7 @@ use App\Models\ProdutoNotaFiscal;
 use App\Models\TipoMarca;
 use App\Models\Troca;
 use App\Models\Usuario;
+use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -26,12 +27,17 @@ use Illuminate\Support\Str;
 class GenericImport
 {
     private string $batchId;
+
     private string $type;
+
     private int $totalRows;
+
     private int $processedRows = 0;
+
     private int $errorCount = 0;
 
     private array $fkCache = [];
+
     private array $trocas = [];
 
     public function __construct(string $batchId, string $type, int $totalRows)
@@ -49,12 +55,13 @@ class GenericImport
             foreach ($chunk as $data) {
                 try {
                     $this->importRow($data);
-                } catch (\Throwable $exception) {
+                }
+                catch (\Throwable $exception) {
                     $this->errorCount++;
 
                     Log::warning('Import row failed', [
                         'batch_id' => $this->batchId,
-                        'error'    => $exception->getMessage(),
+                        'error' => $exception->getMessage(),
                     ]);
                 }
                 $chunkProcessed++;
@@ -68,12 +75,12 @@ class GenericImport
     private function importRow(array $data): void
     {
         match ($this->type) {
-            'clientes'      => $this->importCliente($data),
-            'motoristas'    => $this->importMotorista($data),
-            'produtos'      => $this->importProduto($data),
-            'mapas'         => $this->importMapa($data),
+            'clientes' => $this->importCliente($data),
+            'motoristas' => $this->importMotorista($data),
+            'produtos' => $this->importProduto($data),
+            'mapas' => $this->importMapa($data),
             'vendas_trocas' => $this->importVendaTroca($data),
-            default         => throw new \RuntimeException("Tipo de importação desconhecido: {$this->type}"),
+            default => throw new \RuntimeException("Tipo de importação desconhecido: {$this->type}"),
         };
     }
 
@@ -81,20 +88,20 @@ class GenericImport
 
     private function importCliente(array $data): void
     {
-        $codigo       = Arr::get($data, 'cod_pdv');
-        $documento    = trim((string) Arr::get($data, 'documento'));
+        $codigo = Arr::get($data, 'cod_pdv');
+        $documento = trim((string) Arr::get($data, 'documento'));
         $nomeFantasia = trim((string) Arr::get($data, 'nome_fantasia'));
-        $razaoSocial  = trim((string) Arr::get($data, 'razao_social'));
-        $endereco     = trim((string) Arr::get($data, 'endereco'));
-        $complemento  = trim((string) Arr::get($data, 'complemento'));
-        $bairro       = trim((string) Arr::get($data, 'bairro'));
-        $cidade       = trim((string) Arr::get($data, 'cidade'));
-        $uf           = trim((string) Arr::get($data, 'uf'));
-        $cep          = trim((string) Arr::get($data, 'cep'));
-        $filial       = trim((string) Arr::get($data, 'filial'));
+        $razaoSocial = trim((string) Arr::get($data, 'razao_social'));
+        $endereco = trim((string) Arr::get($data, 'endereco'));
+        $complemento = trim((string) Arr::get($data, 'complemento'));
+        $bairro = trim((string) Arr::get($data, 'bairro'));
+        $cidade = trim((string) Arr::get($data, 'cidade'));
+        $uf = trim((string) Arr::get($data, 'uf'));
+        $cep = trim((string) Arr::get($data, 'cep'));
+        $filial = trim((string) Arr::get($data, 'filial'));
         $descCategoria = trim((string) Arr::get($data, 'categoria'));
-        $tipoPessoa   = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Str::lower(Arr::get($data, 'tipo_pessoa'))));
-        $status       = trim((string) Str::lower(Arr::get($data, 'status')));
+        $tipoPessoa = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) Str::lower(Arr::get($data, 'tipo_pessoa'))));
+        $status = trim((string) Str::lower(Arr::get($data, 'status')));
 
         if (blank($codigo) || blank($nomeFantasia)) {
             throw new \RuntimeException('Faltando Cód PDV ou Nome Fantasia');
@@ -107,7 +114,7 @@ class GenericImport
 
             if (!isset($this->fkCache[$cacheKey])) {
                 $categoria = Categoria::firstOrCreate([
-                    'descricao' => $descCategoria
+                    'descricao' => $descCategoria,
                 ]);
                 $this->fkCache[$cacheKey] = $categoria->id;
             }
@@ -117,22 +124,22 @@ class GenericImport
         $cliente = Cliente::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'documento'     => $documento,
+                'documento' => $documento,
                 'nome_fantasia' => $nomeFantasia,
-                'razao_social'  => $razaoSocial,
-                'endereco'      => $endereco,
-                'complemento'   => $complemento,
-                'bairro'        => $bairro,
-                'cidade'        => $cidade,
-                'uf'            => $uf,
-                'cep'           => $cep,
-                'latitude'      => null,
-                'longitude'     => null,
-                'filial_id'     => $this->resolveFk(Filial::class, 'codigo', $filial),
-                'categoria_id'  => $categoriaId,
-                'tipo_pessoa'   => $tipoPessoa,
-                'status'        => $status,
-            ]
+                'razao_social' => $razaoSocial,
+                'endereco' => $endereco,
+                'complemento' => $complemento,
+                'bairro' => $bairro,
+                'cidade' => $cidade,
+                'uf' => $uf,
+                'cep' => $cep,
+                'latitude' => null,
+                'longitude' => null,
+                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $filial),
+                'categoria_id' => $categoriaId,
+                'tipo_pessoa' => $tipoPessoa,
+                'status' => $status,
+            ],
         );
 
         $telefonesRaw = (string) Arr::get($data, 'telefones');
@@ -159,11 +166,11 @@ class GenericImport
             ClienteTelefones::updateOrCreate(
                 [
                     'cliente_id' => $cliente->id,
-                    'numero'     => $telefoneLimpo
+                    'numero' => $telefoneLimpo,
                 ],
                 [
-                    'isWhatsapp' => $isWhatsapp
-                ]
+                    'isWhatsapp' => $isWhatsapp,
+                ],
             );
         }
     }
@@ -172,25 +179,27 @@ class GenericImport
 
     private function importProduto(array $data): void
     {
-        $codigo        = trim((string) Arr::get($data, 'codigo'));
-        $ean           = trim((string) Arr::get($data, 'ean'));
-        $descricao     = trim((string) Arr::get($data, 'descricao'));
+        $codigo = trim((string) Arr::get($data, 'codigo'));
+        $ean = trim((string) Arr::get($data, 'ean'));
+        $descricao = trim((string) Arr::get($data, 'descricao'));
         $precoUnitario = 0;
 
-        $tipoMarca    = trim((string) Arr::get($data, 'tipo_marca'));
+        $tipoMarca = trim((string) Arr::get($data, 'tipo_marca'));
         $codTipoMarca = $tipoMarca;
+
         if (str_contains($tipoMarca, ' - ')) {
             [$codTipoMarca, $tipoMarca] = explode(' - ', $tipoMarca, 2);
             $codTipoMarca = trim($codTipoMarca);
-            $tipoMarca    = trim($tipoMarca);
+            $tipoMarca = trim($tipoMarca);
         }
 
         $codEmbalagem = trim((string) Arr::get($data, 'embalagem'));
-        $embalagem    = trim((string) Arr::get($data, 'embalagem'));
+        $embalagem = trim((string) Arr::get($data, 'embalagem'));
+
         if (str_contains($embalagem, ' - ')) {
             [$codEmbalagem, $embalagem] = explode(' - ', $embalagem, 2);
             $codEmbalagem = trim($codEmbalagem);
-            $embalagem    = trim($embalagem);
+            $embalagem = trim($embalagem);
         }
 
         if (blank($codigo)) {
@@ -198,19 +207,21 @@ class GenericImport
         }
 
         $tipoMarcaId = $this->resolveFk(TipoMarca::class, 'codigo', $codTipoMarca);
+
         if (!$tipoMarcaId && !blank($tipoMarca)) {
             $tipoMarcaRecord = TipoMarca::updateOrCreate(
                 ['codigo' => $codTipoMarca ?? $tipoMarca],
-                ['descricao' => $tipoMarca]
+                ['descricao' => $tipoMarca],
             );
             $tipoMarcaId = $tipoMarcaRecord->id;
         }
 
         $embalagemId = $this->resolveFk(Embalagem::class, 'codigo', $codEmbalagem);
+
         if (!$embalagemId && !blank($embalagem)) {
             $embalagemRecord = Embalagem::updateOrCreate(
                 ['codigo' => $codEmbalagem ?? $embalagem],
-                ['descricao' => $embalagem]
+                ['descricao' => $embalagem],
             );
             $embalagemId = $embalagemRecord->id;
         }
@@ -218,12 +229,12 @@ class GenericImport
         Produto::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'ean'            => $ean,
-                'descricao'      => $descricao,
+                'ean' => $ean,
+                'descricao' => $descricao,
                 'preco_unitario' => $this->toDecimal($precoUnitario),
-                'tipo_marca_id'  => $tipoMarcaId,
-                'embalagem_id'   => $embalagemId,
-            ]
+                'tipo_marca_id' => $tipoMarcaId,
+                'embalagem_id' => $embalagemId,
+            ],
         );
     }
 
@@ -231,15 +242,15 @@ class GenericImport
 
     private function importMotorista(array $data): void
     {
-        $cpf             = $this->normalizeCPF(trim((string) Arr::get($data, 'cpf')));
-        $codigo          = trim((string) Arr::get($data, 'codmotorista'));
-        $nome            = trim((string) Arr::get($data, 'nome_motorista'));
-        $cod_cluster     = trim((string) Arr::get($data, 'codcluster'));
-        $desc_cluster    = trim((string) Arr::get($data, 'cluster'));
-        $cod_filial      = trim((string) Arr::get($data, 'codfilial'));
-        $data_admissao   = trim((string) Arr::get($data, 'data_admissao'));
+        $cpf = $this->normalizeCPF(trim((string) Arr::get($data, 'cpf')));
+        $codigo = trim((string) Arr::get($data, 'codmotorista'));
+        $nome = trim((string) Arr::get($data, 'nome_motorista'));
+        $cod_cluster = trim((string) Arr::get($data, 'codcluster'));
+        $desc_cluster = trim((string) Arr::get($data, 'cluster'));
+        $cod_filial = trim((string) Arr::get($data, 'codfilial'));
+        $data_admissao = trim((string) Arr::get($data, 'data_admissao'));
         $data_inativacao = trim((string) Arr::get($data, 'data_inativacao'));
-        $status          = trim((string) Arr::get($data, 'status'));
+        $status = trim((string) Arr::get($data, 'status'));
 
         if (blank($codigo) || blank($nome)) {
             throw new \RuntimeException('Missing codigo or nome');
@@ -247,29 +258,29 @@ class GenericImport
 
         $cluster = Cluster::updateOrCreate(
             ['codigo' => $cod_cluster],
-            ['descricao' => $desc_cluster]
+            ['descricao' => $desc_cluster],
         );
 
         $usuario = Usuario::updateOrCreate(
             ['cpf' => $cpf],
             [
-                'nome'            => $nome,
-                'senha'           => $cpf,
-                'role'            => 'motorista',
+                'nome' => $nome,
+                'senha' => $cpf,
+                'role' => 'motorista',
                 'primeiro_acesso' => true,
-            ]
+            ],
         );
 
         Motorista::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'filial_id'       => $this->resolveFk(Filial::class, 'codigo', $cod_filial),
-                'cluster_id'      => $cluster->id,
-                'usuario_id'      => $usuario->id,
-                'status'          => Str::lower(Arr::get($data, 'status')),
-                'data_admissao'   => $this->toDate($data_admissao),
+                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $cod_filial),
+                'cluster_id' => $cluster->id,
+                'usuario_id' => $usuario->id,
+                'status' => Str::lower(Arr::get($data, 'status')),
+                'data_admissao' => $this->toDate($data_admissao),
                 'data_inativacao' => $this->toDate($data_inativacao),
-            ]
+            ],
         );
     }
 
@@ -277,12 +288,12 @@ class GenericImport
 
     private function importMapa(array $data): void
     {
-        $codigo       = trim((string) Arr::get($data, 'nro_do_mapa'));
-        $codFilial    = trim((string) Arr::get($data, 'unb'));
+        $codigo = trim((string) Arr::get($data, 'nro_do_mapa'));
+        $codFilial = trim((string) Arr::get($data, 'unb'));
         $codMotorista = trim((string) Arr::get($data, 'motorista'));
-        $dataEntrega  = trim((string) Arr::get($data, 'data_entrega'));
-        $placa        = trim((string) Arr::get($data, 'placa'));
-        $clientes     = trim((string) Arr::get($data, 'clientes'));
+        $dataEntrega = trim((string) Arr::get($data, 'data_entrega'));
+        $placa = trim((string) Arr::get($data, 'placa'));
+        $clientes = trim((string) Arr::get($data, 'clientes'));
 
         if (blank($codigo)) {
             throw new \RuntimeException('Missing codigo (nro_do_mapa)');
@@ -295,11 +306,11 @@ class GenericImport
         $mapa = Mapa::updateOrCreate(
             ['codigo' => $codigo],
             [
-                'filial_id'    => $this->resolveFk(Filial::class, 'codigo', $codFilial),
+                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $codFilial),
                 'motorista_id' => $this->resolveFk(Motorista::class, 'codigo', $codMotorista),
                 'data_entrega' => $this->toDate($dataEntrega),
-                'placa'        => $placa,
-            ]
+                'placa' => $placa,
+            ],
         );
 
         if (!blank($clientes)) {
@@ -310,10 +321,11 @@ class GenericImport
 
                 if ($clienteId) {
                     ClientesMapa::updateOrCreate([
-                        'mapa_id'    => $mapa->id,
+                        'mapa_id' => $mapa->id,
                         'cliente_id' => $clienteId,
                     ]);
-                } else {
+                }
+                else {
                     Log::warning("[ImportMapa] Cliente '{$codCliente}' não encontrado no banco para o Mapa '{$codigo}'.");
                 }
             }
@@ -324,18 +336,18 @@ class GenericImport
 
     private function importVendaTroca(array $data): void
     {
-        $numero       = trim((string) Arr::get($data, 'nota_fiscal'));
-        $pedido       = trim((string) Arr::get($data, 'nr_pedido'));
-        $codCliente   = trim((string) Arr::get($data, 'cliente'));
+        $numero = trim((string) Arr::get($data, 'nota_fiscal'));
+        $pedido = trim((string) Arr::get($data, 'nr_pedido'));
+        $codCliente = trim((string) Arr::get($data, 'cliente'));
         $dataOperacao = trim((string) Arr::get($data, 'dt_operacao'));
-        $operacao     = trim((string) Arr::get($data, 'operacao'));
+        $operacao = trim((string) Arr::get($data, 'operacao'));
         $data_emissao = trim((string) Arr::get($data, 'emissao'));
 
-        $produto        = trim((string) Arr::get($data, 'produto'));
-        $quantidade     = (int) Arr::get($data, 'quantidade');
-        $valorDesconto  = $this->toDecimal(Arr::get($data, 'desconto'));
+        $produto = trim((string) Arr::get($data, 'produto'));
+        $quantidade = (int) Arr::get($data, 'quantidade');
+        $valorDesconto = $this->toDecimal(Arr::get($data, 'desconto'));
         $valorAdicional = $this->toDecimal(Arr::get($data, 'adic_fina'));
-        $valorTotal     = $this->toDecimal(Arr::get($data, 'total'));
+        $valorTotal = $this->toDecimal(Arr::get($data, 'total'));
 
         if (blank($numero)) {
             throw new \RuntimeException('Missing numero');
@@ -346,10 +358,10 @@ class GenericImport
         $notaFiscal = NotaFiscal::updateOrCreate(
             ['numero' => $numero],
             [
-                'pedido'       => $pedido,
-                'cliente_id'   => $clienteId,
+                'pedido' => $pedido,
+                'cliente_id' => $clienteId,
                 'data_emissao' => $this->toDate($data_emissao),
-            ]
+            ],
         );
 
         $produtoId = $this->resolveFk(Produto::class, 'codigo', $produto);
@@ -361,16 +373,16 @@ class GenericImport
         $produtoNotaFiscal = ProdutoNotaFiscal::updateOrCreate(
             [
                 'nota_fiscal_id' => $notaFiscal->id,
-                'produto_id'     => $produtoId,
+                'produto_id' => $produtoId,
             ],
             [
-                'quantidade'      => $quantidade,
-                'valor_desconto'  => $valorDesconto,
+                'quantidade' => $quantidade,
+                'valor_desconto' => $valorDesconto,
                 'valor_adicional' => $valorAdicional,
-                'valor_total'     => $valorTotal,
-                'operacao'        => $operacao,
-                'data_operacao'   => $this->toDate($dataOperacao),
-            ]
+                'valor_total' => $valorTotal,
+                'operacao' => $operacao,
+                'data_operacao' => $this->toDate($dataOperacao),
+            ],
         );
 
         if (!in_array((int) $operacao, [5, 39], true) && !in_array($operacao, ['5', '39'], true)) {
@@ -380,12 +392,12 @@ class GenericImport
         Troca::updateOrCreate(
             [
                 'produto_nota_fiscal_id' => $produtoNotaFiscal->id,
-                'operacao'               => $operacao,
-                'data_operacao'          => $this->toDate($dataOperacao),
+                'operacao' => $operacao,
+                'data_operacao' => $this->toDate($dataOperacao),
             ],
             [
                 'quantidade' => $quantidade,
-            ]
+            ],
         );
 
         // CORREÇÃO: Busca segura da relação com contatos sem quebrar quando $clienteId é null
@@ -401,9 +413,11 @@ class GenericImport
             $cliente->nome = $cliente->razao_social ?: $cliente->nome_fantasia;
 
             $doc = preg_replace('/[^0-9]/', '', (string) $cliente->documento);
+
             if (strlen($doc) === 11) {
                 $cliente->cpf = $cliente->documento;
-            } elseif (strlen($doc) === 14) {
+            }
+            elseif (strlen($doc) === 14) {
                 $cliente->cnpj = $cliente->documento;
             }
 
@@ -412,17 +426,18 @@ class GenericImport
             $cliente->numero = $telWhats ?? $telPadrao ?? 'Não informado';
 
             $this->trocas[$cliente->id] = [
-                'cliente'        => (object) [
-                    'nome'     => $cliente->nome,
-                    'cpf'      => $cliente->cpf ?? null,
-                    'cnpj'     => $cliente->cnpj ?? null,
+                'cliente' => (object) [
+                    'nome' => $cliente->nome,
+                    'cpf' => $cliente->cpf ?? null,
+                    'cnpj' => $cliente->cnpj ?? null,
                     'telefone' => $cliente->numero,
                     'endereco' => $cliente->endereco . ($cliente->complemento ? ' - ' . $cliente->complemento : '') . ', ' . $cliente->bairro . ', ' . $cliente->cidade . '/' . $cliente->uf . ' - CEP: ' . $cliente->cep,
                 ],
-                'protocolo'      => 'TRC-' . $notaFiscal->numero,
+                'protocolo' => 'TRC-' . $notaFiscal->numero,
                 'contatoCliente' => $cliente->numero,
-                'data_operacao'  => $this->toDate($dataOperacao),
-                'notas'          => [],
+                'data_operacao' => $this->toDate($dataOperacao),
+                'filial_id' => $cliente->filial_id,
+                'notas' => [],
             ];
         }
 
@@ -433,10 +448,10 @@ class GenericImport
         }
 
         $itemAvaria = (object) [
-            'produtoNotaFiscal'   => $produtoNotaFiscal,
+            'produtoNotaFiscal' => $produtoNotaFiscal,
             'quantidade_avariada' => $quantidade,
-            'tipoAvaria'          => (object) [
-                'descricao' => "Troca - Operação {$operacao}"
+            'tipoAvaria' => (object) [
+                'descricao' => "Troca - Operação {$operacao}",
             ],
         ];
 
@@ -478,8 +493,8 @@ class GenericImport
                 : 100;
 
             $batch->update([
-                'percentage'   => $percentage,
-                'last_log'     => "Importing rows in progress",
+                'percentage' => $percentage,
+                'last_log' => 'Importing rows in progress',
                 'current_step' => $percentage >= 100 ? 'completed' : 'processing',
             ]);
 
@@ -489,8 +504,11 @@ class GenericImport
 
     private function toDecimal(mixed $value): ?float
     {
-        if (blank($value)) return null;
+        if (blank($value)) {
+            return null;
+        }
         $v = str_replace(',', '.', trim((string) $value));
+
         return is_numeric($v) ? (float) $v : null;
     }
 
@@ -507,8 +525,10 @@ class GenericImport
         if (is_numeric($value)) {
             try {
                 $timestamp = ($value - 25569) * 86400;
-                return \Carbon\Carbon::createFromTimestamp($timestamp, 'UTC')->format('Y-m-d');
-            } catch (\Throwable $e) {
+
+                return Carbon::createFromTimestamp($timestamp, 'UTC')->format('Y-m-d');
+            }
+            catch (\Throwable $e) {
             }
         }
 
@@ -516,8 +536,9 @@ class GenericImport
 
         if (str_contains($valueStr, '/')) {
             try {
-                return \Carbon\Carbon::createFromFormat('d/m/Y', $valueStr)->format('Y-m-d');
-            } catch (\Throwable $e) {
+                return Carbon::createFromFormat('d/m/Y', $valueStr)->format('Y-m-d');
+            }
+            catch (\Throwable $e) {
                 // Continue to other formats
             }
         }
@@ -535,8 +556,9 @@ class GenericImport
 
         foreach ($formats as $format) {
             try {
-                return \Carbon\Carbon::createFromFormat($format, $valueStr)->format('Y-m-d');
-            } catch (\Throwable $e) {
+                return Carbon::createFromFormat($format, $valueStr)->format('Y-m-d');
+            }
+            catch (\Throwable $e) {
                 continue;
             }
         }
@@ -546,16 +568,19 @@ class GenericImport
             // Remove timezone info se houver (ex: GMT-0300 (Horário Padrão de Brasília))
             $cleanStr = preg_replace('/\s+GMT[\+\-]\d{4}\s*\([^)]*\)/', '', $valueStr);
             $timestamp = strtotime($cleanStr);
+
             if ($timestamp !== false) {
                 return date('Y-m-d', $timestamp);
             }
-        } catch (\Throwable $e) {
+        }
+        catch (\Throwable $e) {
         }
 
         // Último recurso: tenta Carbon::parse()
         try {
-            return \Carbon\Carbon::parse($valueStr)->format('Y-m-d');
-        } catch (\Throwable $e) {
+            return Carbon::parse($valueStr)->format('Y-m-d');
+        }
+        catch (\Throwable $e) {
             return null;
         }
     }
@@ -596,11 +621,12 @@ class GenericImport
             })->values();
 
             $trocasFormatadas[$clienteId] = [
-                'cliente'        => $dadosCliente['cliente'],
-                'protocolo'      => $dadosCliente['protocolo'],
+                'cliente' => $dadosCliente['cliente'],
+                'protocolo' => $dadosCliente['protocolo'],
                 'contatoCliente' => $dadosCliente['contatoCliente'],
-                'data_operacao'  => $dadosCliente['data_operacao'],
-                'avarias'        => $avarias,
+                'data_operacao' => $dadosCliente['data_operacao'],
+                'filial_id' => $dadosCliente['filial_id'],
+                'avarias' => $avarias,
             ];
         }
 

@@ -7,8 +7,8 @@
 namespace App\Models;
 
 use Illuminate\Auth\Passwords\CanResetPassword;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\HasApiTokens;
@@ -26,15 +26,13 @@ use Laravel\Sanctum\HasApiTokens;
  */
 class Usuario extends Authenticatable
 {
-    use CanResetPassword, HasApiTokens, Notifiable, HasUuids;
+    use CanResetPassword, HasApiTokens, HasUuids, Notifiable;
 
     protected $primaryKey = 'id';
 
     public $incrementing = false;
 
     protected $keyType = 'string';
-
-    protected $connection = 'mysql';
 
     protected $table = 'usuarios';
 
@@ -58,6 +56,7 @@ class Usuario extends Authenticatable
             'cpf' => ['required', 'string', 'max:11', 'unique:usuarios,cpf'],
             'senha' => ['required', 'string'],
             'confirmar_senha' => ['required', 'same:senha'],
+            'role' => ['required', 'in:administrador,monitoramento,motorista'],
         ];
     }
 

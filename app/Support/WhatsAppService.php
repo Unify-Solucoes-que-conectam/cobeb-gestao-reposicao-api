@@ -2,123 +2,121 @@
 
 namespace App\Support;
 
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use App\Exceptions\WhatsAppNotConfiguredException;
+use App\Models\WhatsAppConfiguration;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class WhatsAppService
 {
-    protected string $baseUrl;
-    protected string $apiKey;
-    protected string $instance;
-    protected string $defaultNumber;
+    public function __construct(private readonly EvolutionClient $evolution) {}
 
-    public function __construct()
+    public function sendMessage(string $filialId, string $phone, string $text, ?string $event = null, array $variables = []): bool
     {
-        $this->baseUrl = rtrim(config('evolution.base_url'), '/');
-        $this->apiKey = config('evolution.api_key');
-        $this->instance = config('evolution.instance');
-        $this->defaultNumber = config('evolution.default_number');
-    }
+        $configuration = $this->configuration($filialId);
+        $number = $this->destination($phone);
 
-    public function sendMessage(string $phone, string $text): bool
-    {
-        $number = $this->formatNumber($phone);
-        return $this->sendText($number, $text);
-    }
+        if ($configuration->provider === WhatsAppConfiguration::PROVIDER_OFFICIAL) {
+            $template = $configuration->templates()->where('event', $event ?? 'manual_notification')->first();
 
-    protected function sendText(string $number, string $text): bool
-    {
-        try {
-            /** @var Response $response */
-            $response = Http::withHeaders([
-                'apikey' => $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])->post("{$this->baseUrl}/message/sendText/{$this->instance}", [
-                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
-                'text' => $text,
-            ]);
-
-            if ($response->successful()) {
-                Log::info('Mensagem enviada', [$this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),]);
-                return true;
+            if (!$template || strtoupper($template->status) !== 'APPROVED') {
+                throw new WhatsAppNotConfiguredException('Não existe template aprovado para este evento.');
             }
 
-            Log::error('Erro ao enviar mensagem', [
-                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
+            $this->evolution->sendTemplate(
+                $configuration,
+                $number,
+                $template->template_name,
+                $template->language_code,
+                $variables !== [] ? $variables : [$text],
+            );
 
-            return false;
-        } catch (\Throwable $e) {
-            Log::error('Exceção ao enviar mensagem', [
-                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
+            return true;
         }
+
+        $this->evolution->sendText($configuration, $number, $text);
+
+        return true;
     }
 
-    public function sendMedia(string $phone, string $mediatype, string $mimetype, string $caption, string $media, string $fileName): bool
+    public function sendMedia(
+        string $filialId,
+        string $phone,
+        string $caption,
+        string $storagePath,
+        string $fileName,
+        ?string $event = 'import_report',
+        array $variables = [],
+    ): bool {
+        $configuration = $this->configuration($filialId);
+        $number = $this->destination($phone);
+
+        if (!Storage::exists($storagePath)) {
+            throw new \RuntimeException('Arquivo de mídia não encontrado.');
+        }
+
+        if ($configuration->provider === WhatsAppConfiguration::PROVIDER_OFFICIAL) {
+            $template = $configuration->templates()->where('event', $event)->first();
+
+            if (!$template || strtoupper($template->status) !== 'APPROVED') {
+                throw new WhatsAppNotConfiguredException('Não existe template aprovado para o relatório.');
+            }
+
+            $encodedPath = rtrim(strtr(base64_encode($storagePath), '+/', '-_'), '=');
+            $url = URL::temporarySignedRoute('whatsapp.media', now()->addMinutes(15), ['encodedPath' => $encodedPath]);
+            $this->evolution->sendTemplate(
+                $configuration,
+                $number,
+                $template->template_name,
+                $template->language_code,
+                $variables,
+                ['url' => $url, 'name' => $fileName],
+            );
+
+            return true;
+        }
+
+        $this->evolution->sendMedia(
+            $configuration,
+            $number,
+            $caption,
+            base64_encode(Storage::get($storagePath)),
+            $fileName,
+        );
+
+        return true;
+    }
+
+    private function configuration(string $filialId): WhatsAppConfiguration
+    {
+        $configuration = WhatsAppConfiguration::query()->with('templates')->where('filial_id', $filialId)->first();
+
+        if (!$configuration) {
+            throw new WhatsAppNotConfiguredException('A filial não possui configuração de WhatsApp.');
+        }
+
+        if ($configuration->status !== 'connected') {
+            throw new WhatsAppNotConfiguredException('O WhatsApp da filial não está conectado.');
+        }
+
+        return $configuration;
+    }
+
+    private function destination(string $phone): string
     {
         $number = $this->formatNumber($phone);
 
-        try {
-            /** @var Response $response */
-            $response = Http::withHeaders([
-                'apikey' => $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])->post("{$this->baseUrl}/message/sendMedia/{$this->instance}", [
-                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
-                'mediatype' => $mediatype,
-                'mimetype' => $mimetype,
-                'caption' => $caption,
-                'media' => $media,
-                'fileName' => $fileName,
-            ]);
-
-            if ($response->successful()) {
-                Log::info('Arquivo enviado', [$this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),]);
-                return true;
-            }
-
-            Log::error('Erro ao enviar arquivo', [
-                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
-                'status' => $response->status(),
-                'body' => $response->body(),
-                'payload' => [
-                    'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
-                    'mediatype' => $mediatype,
-                    'mimetype' => $mimetype,
-                    'caption' => $caption,
-                    'media' => $media,
-                    'fileName' => $fileName,
-                ],
-            ]);
-
-            return false;
-        } catch (\Throwable $e) {
-            Log::error('Exceção ao enviar arquivo', [
-                'number' => $this->formatNumber(config('app.env') !== 'production' ? $this->defaultNumber : $number),
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
+        if (!app()->environment('production') && filled(config('evolution.default_number'))) {
+            return $this->formatNumber((string) config('evolution.default_number'));
         }
+
+        return $number;
     }
 
-    protected function formatNumber(string $phone): string
+    private function formatNumber(string $phone): string
     {
-        // Remove tudo que não é dígito
-        $cleaned = preg_replace('/\D/', '', $phone);
+        $cleaned = preg_replace('/\D/', '', $phone) ?? '';
 
-        // Se não tem código do país (55), adiciona
-        if (strlen($cleaned) <= 11) {
-            $cleaned = '55' . $cleaned;
-        }
-
-        return $cleaned;
+        return strlen($cleaned) <= 11 ? '55' . $cleaned : $cleaned;
     }
 }

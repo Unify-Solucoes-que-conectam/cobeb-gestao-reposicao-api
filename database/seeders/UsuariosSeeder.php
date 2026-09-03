@@ -25,8 +25,8 @@ class UsuariosSeeder extends Seeder
             'nome' => $defaultUser,
             'cpf' => '00000000000',
             'senha' => $defaultPassword,
-            'role' => 'monitoramento',
-            'primeiro_acesso' => true
+            'role' => 'administrador',
+            'primeiro_acesso' => true,
         ]);
     }
 }

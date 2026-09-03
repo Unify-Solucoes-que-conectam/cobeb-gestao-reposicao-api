@@ -11,8 +11,10 @@ class NotificarClienteController extends Controller
     public function notify(Request $request): JsonResponse
     {
         $request->validate([
+            'filial_id' => ['required', 'uuid', 'exists:filiais,id'],
             'phone' => ['required', 'string', 'min:10', 'max:11'],
             'text' => ['required', 'string'],
+            'event' => ['nullable', 'in:manual_notification'],
         ], [
             'phone.required' => 'O telefone é obrigatório.',
             'phone.min' => 'O telefone deve ter pelo menos 10 dígitos.',
@@ -22,7 +24,16 @@ class NotificarClienteController extends Controller
 
         $phone = preg_replace('/\D/', '', $request->phone);
 
-        EnviarMensagemWhatsAppJob::dispatch($phone, 'text', $request->text);
+        EnviarMensagemWhatsAppJob::dispatch(
+            $request->filial_id,
+            $phone,
+            'text',
+            $request->text,
+            null,
+            null,
+            $request->event ?? 'manual_notification',
+            [$request->text],
+        );
 
         return response()->json([
             'success' => true,
