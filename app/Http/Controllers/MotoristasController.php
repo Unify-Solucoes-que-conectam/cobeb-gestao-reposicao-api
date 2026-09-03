@@ -32,6 +32,11 @@ class MotoristasController extends Controller
             $query->where('cluster_id', $request->input('cluster'));
         }
 
+        // filtrar por filial
+        if ($request->filled('filial')) {
+            $query->where('filial_id', $request->input('filial'));
+        }
+
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
