@@ -4,10 +4,8 @@ namespace App\Providers;
 
 use App\Broadcasting\DatabaseChannel;
 use App\Models\PersonalAccessToken;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -50,12 +48,6 @@ class AppServiceProvider extends ServiceProvider
 
         // Registra um novo canal de transmissão para o banco de dados
         $this->app->make(ChannelManager::class)->extend('database', fn() => new DatabaseChannel());
-
-        RateLimiter::for('whatsapp', function ($job) {
-            return Limit::perMinute(config('evolution.rate_limit', 20))
-                ->by(method_exists($job, 'filialId') ? $job->filialId() : 'global')
-            ;
-        });
 
         if ($this->app->environment('production')) {
             URL::forceRootUrl(config('app.url'));

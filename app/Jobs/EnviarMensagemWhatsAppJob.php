@@ -3,12 +3,13 @@
 namespace App\Jobs;
 
 use App\Exceptions\WhatsAppNotConfiguredException;
+use App\Jobs\Middleware\SpaceWhatsAppMessages;
+use App\Models\WhatsAppConfiguration;
 use App\Support\WhatsAppService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -40,9 +41,18 @@ class EnviarMensagemWhatsAppJob implements ShouldQueue
         return $this->filialId;
     }
 
+    public function rateLimitKey(): string
+    {
+        $configuration = WhatsAppConfiguration::resolveForFilial($this->filialId);
+
+        return $configuration
+            ? 'configuration:' . $configuration->getKey()
+            : 'filial:' . $this->filialId;
+    }
+
     public function middleware(): array
     {
-        return [(new RateLimited('whatsapp'))->releaseAfter(30)];
+        return [new SpaceWhatsAppMessages()];
     }
 
     public function handle(WhatsAppService $service): void

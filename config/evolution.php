@@ -22,5 +22,5 @@ return [
 
     'default_number' => env('EVOLUTION_DEFAULT_NUMBER', '37999999999'),
 
-    'rate_limit' => env('WHATSAPP_RATE_LIMIT_PER_MINUTE', 20),
+    'rate_limit' => env('WHATSAPP_RATE_LIMIT_PER_MINUTE', 10),
 ];
