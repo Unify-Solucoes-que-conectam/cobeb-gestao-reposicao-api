@@ -14,5 +14,6 @@ Route::middleware('can:manage-whatsapp')->group(function () {
     Route::put('configurations/{filial}/templates', [WhatsAppConfigurationController::class, 'templates']);
     Route::post('configurations/{filial}/test', [WhatsAppConfigurationController::class, 'test']);
     Route::post('configurations/{filial}/reconnect', [WhatsAppConfigurationController::class, 'reconnect']);
+    Route::put('configurations/{filial}/global', [WhatsAppConfigurationController::class, 'setGlobal']);
     Route::delete('configurations/{filial}', [WhatsAppConfigurationController::class, 'destroy']);
 });

@@ -89,7 +89,7 @@ class WhatsAppService
 
     private function configuration(string $filialId): WhatsAppConfiguration
     {
-        $configuration = WhatsAppConfiguration::query()->with('templates')->where('filial_id', $filialId)->first();
+        $configuration = WhatsAppConfiguration::resolveForFilial($filialId);
 
         if (!$configuration) {
             throw new WhatsAppNotConfiguredException('A filial não possui configuração de WhatsApp.');

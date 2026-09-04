@@ -24,13 +24,25 @@ class WhatsAppConfigurationController extends Controller
 
     public function index(): JsonResponse
     {
+        $global = WhatsAppConfiguration::query()
+            ->with(['templates', 'filial'])
+            ->where('is_global', true)
+            ->first()
+        ;
+
         $filiais = Filial::query()
             ->with(['whatsappConfiguration.templates'])
             ->orderBy('codigo')
             ->get()
             ->map(fn(Filial $filial) => [
                 'filial' => ['id' => $filial->id, 'codigo' => $filial->codigo, 'descricao' => $filial->descricao],
-                'configuration' => $this->serialize($filial->whatsappConfiguration),
+                'configuration' => $this->serialize($global ?? $filial->whatsappConfiguration),
+                'uses_global' => $global !== null && $global->filial_id !== $filial->id,
+                'configuration_owner' => $global ? [
+                    'id' => $global->filial_id,
+                    'codigo' => $global->filial?->codigo,
+                    'descricao' => $global->filial?->descricao,
+                ] : null,
             ])
         ;
 
@@ -39,7 +51,7 @@ class WhatsAppConfigurationController extends Controller
 
     public function show(Filial $filial): JsonResponse
     {
-        return $this->success($this->serialize($filial->whatsappConfiguration?->load('templates')));
+        return $this->success($this->serialize($this->configurationFor($filial)));
     }
 
     public function official(Request $request, Filial $filial): JsonResponse
@@ -50,10 +62,19 @@ class WhatsAppConfigurationController extends Controller
             'business_account_id' => ['required', 'string', 'max:100'],
             'token_expires_at' => ['nullable', 'date', 'after:now'],
             'replace' => ['sometimes', 'boolean'],
+            'is_global' => ['sometimes', 'boolean'],
         ]);
 
         return $this->locked($filial, function () use ($request, $filial, $data) {
             $existing = $filial->whatsappConfiguration()->first();
+
+            if ($response = $this->globalConflict($filial)) {
+                return $response;
+            }
+
+            $makeGlobal = array_key_exists('is_global', $data)
+                ? (bool) $data['is_global']
+                : (bool) $existing?->is_global;
 
             if ($existing && !$request->boolean('replace')) {
                 return $this->error('Confirme a substituição da configuração atual.', 'REPLACEMENT_CONFIRMATION_REQUIRED', 409);
@@ -79,11 +100,20 @@ class WhatsAppConfigurationController extends Controller
                 );
                 $created = true;
 
-                $configuration = DB::transaction(function () use ($request, $filial, $data, $token, $instanceName, $remote, $existing) {
+                $configuration = DB::transaction(function () use ($request, $filial, $data, $token, $instanceName, $remote, $existing, $makeGlobal) {
+                    if ($makeGlobal) {
+                        WhatsAppConfiguration::query()->where('is_global', true)->update([
+                            'is_global' => false,
+                            'global_slot' => null,
+                        ]);
+                    }
+
                     $configuration = WhatsAppConfiguration::query()->updateOrCreate(
                         ['filial_id' => $filial->id],
                         [
                             'provider' => WhatsAppConfiguration::PROVIDER_OFFICIAL,
+                            'is_global' => $makeGlobal,
+                            'global_slot' => $makeGlobal ? 'global' : null,
                             'instance_name' => $instanceName,
                             'instance_id' => data_get($remote, 'instance.instanceId') ?? data_get($remote, 'instance.instanceName'),
                             'instance_api_key' => is_string(data_get($remote, 'hash')) ? data_get($remote, 'hash') : null,
@@ -137,10 +167,21 @@ class WhatsAppConfigurationController extends Controller
 
     public function baileys(Request $request, Filial $filial): JsonResponse
     {
-        $request->validate(['replace' => ['sometimes', 'boolean']]);
+        $request->validate([
+            'replace' => ['sometimes', 'boolean'],
+            'is_global' => ['sometimes', 'boolean'],
+        ]);
 
         return $this->locked($filial, function () use ($request, $filial) {
             $existing = $filial->whatsappConfiguration()->first();
+
+            if ($response = $this->globalConflict($filial)) {
+                return $response;
+            }
+
+            $makeGlobal = $request->has('is_global')
+                ? $request->boolean('is_global')
+                : (bool) $existing?->is_global;
 
             if ($existing && !$request->boolean('replace')) {
                 return $this->error('Confirme a substituição da configuração atual.', 'REPLACEMENT_CONFIRMATION_REQUIRED', 409);
@@ -150,11 +191,20 @@ class WhatsAppConfigurationController extends Controller
 
             try {
                 $remote = $this->evolution->createBaileys($instanceName);
-                $configuration = DB::transaction(function () use ($request, $filial, $instanceName, $remote, $existing) {
+                $configuration = DB::transaction(function () use ($request, $filial, $instanceName, $remote, $existing, $makeGlobal) {
+                    if ($makeGlobal) {
+                        WhatsAppConfiguration::query()->where('is_global', true)->update([
+                            'is_global' => false,
+                            'global_slot' => null,
+                        ]);
+                    }
+
                     $configuration = WhatsAppConfiguration::query()->updateOrCreate(
                         ['filial_id' => $filial->id],
                         [
                             'provider' => WhatsAppConfiguration::PROVIDER_BAILEYS,
+                            'is_global' => $makeGlobal,
+                            'global_slot' => $makeGlobal ? 'global' : null,
                             'instance_name' => $instanceName,
                             'instance_id' => data_get($remote, 'instance.instanceId') ?? data_get($remote, 'instance.instanceName'),
                             'instance_api_key' => is_string(data_get($remote, 'hash')) ? data_get($remote, 'hash') : null,
@@ -203,7 +253,7 @@ class WhatsAppConfigurationController extends Controller
 
     public function connection(Filial $filial): JsonResponse
     {
-        $configuration = $filial->whatsappConfiguration;
+        $configuration = $this->configurationFor($filial);
 
         if (!$configuration) {
             return $this->error('A filial não possui configuração de WhatsApp.', 'WHATSAPP_NOT_CONFIGURED', 404);
@@ -242,7 +292,7 @@ class WhatsAppConfigurationController extends Controller
 
     public function qrcode(Filial $filial): JsonResponse
     {
-        $configuration = $filial->whatsappConfiguration;
+        $configuration = $this->configurationFor($filial);
 
         if (!$configuration || $configuration->provider !== WhatsAppConfiguration::PROVIDER_BAILEYS) {
             return $this->error('A filial não possui uma instância por QR Code.', 'WHATSAPP_NOT_CONFIGURED', 404);
@@ -264,7 +314,7 @@ class WhatsAppConfigurationController extends Controller
 
     public function officialTemplates(Filial $filial): JsonResponse
     {
-        $configuration = $filial->whatsappConfiguration;
+        $configuration = $this->configurationFor($filial);
 
         if (!$configuration || $configuration->provider !== WhatsAppConfiguration::PROVIDER_OFFICIAL) {
             return $this->error('A filial não possui uma instância oficial.', 'WHATSAPP_NOT_CONFIGURED', 404);
@@ -283,10 +333,18 @@ class WhatsAppConfigurationController extends Controller
 
     public function templates(Request $request, Filial $filial): JsonResponse
     {
-        $configuration = $filial->whatsappConfiguration;
+        $configuration = $this->configurationFor($filial);
 
         if (!$configuration || $configuration->provider !== WhatsAppConfiguration::PROVIDER_OFFICIAL) {
             return $this->error('A filial não possui uma instância oficial.', 'WHATSAPP_NOT_CONFIGURED', 404);
+        }
+
+        if ($configuration->filial_id !== $filial->id) {
+            return $this->error(
+                'Os templates da instância geral devem ser administrados pela filial de origem.',
+                'GLOBAL_CONFIGURATION_MANAGED_BY_ANOTHER_BRANCH',
+                409,
+            );
         }
 
         $data = $request->validate([
@@ -344,7 +402,7 @@ class WhatsAppConfigurationController extends Controller
             'message' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $configuration = $filial->whatsappConfiguration;
+        $configuration = $this->configurationFor($filial);
 
         if (!$configuration) {
             return $this->error('A filial não possui configuração de WhatsApp.', 'WHATSAPP_NOT_CONFIGURED', 404);
@@ -380,17 +438,66 @@ class WhatsAppConfigurationController extends Controller
 
     public function reconnect(Filial $filial): JsonResponse
     {
-        return $filial->whatsappConfiguration?->provider === WhatsAppConfiguration::PROVIDER_BAILEYS
+        return $this->configurationFor($filial)?->provider === WhatsAppConfiguration::PROVIDER_BAILEYS
             ? $this->qrcode($filial)
             : $this->connection($filial);
     }
 
+    public function setGlobal(Request $request, Filial $filial): JsonResponse
+    {
+        $data = $request->validate(['enabled' => ['required', 'boolean']]);
+
+        return $this->locked($filial, function () use ($request, $filial, $data) {
+            $configuration = $filial->whatsappConfiguration()->first();
+
+            if (!$configuration) {
+                return $this->error(
+                    'Configure primeiro uma instância própria nesta filial.',
+                    'WHATSAPP_NOT_CONFIGURED',
+                    404,
+                );
+            }
+
+            DB::transaction(function () use ($request, $configuration, $data) {
+                if ($data['enabled']) {
+                    WhatsAppConfiguration::query()->where('is_global', true)->update([
+                        'is_global' => false,
+                        'global_slot' => null,
+                    ]);
+                }
+
+                $configuration->update([
+                    'is_global' => $data['enabled'],
+                    'global_slot' => $data['enabled'] ? 'global' : null,
+                    'updated_by' => $request->user()->id,
+                ]);
+            });
+
+            $this->audit($request, $filial, $data['enabled'] ? 'global_enabled' : 'global_disabled');
+
+            return $this->success(
+                $this->serialize($configuration->fresh('templates')),
+                $data['enabled']
+                    ? 'Esta instância agora será utilizada por todas as filiais.'
+                    : 'A instância geral foi desativada.',
+            );
+        });
+    }
+
     public function destroy(Request $request, Filial $filial): JsonResponse
     {
-        $configuration = $filial->whatsappConfiguration;
+        $configuration = $this->configurationFor($filial);
 
         if (!$configuration) {
             return $this->success(null, 'A filial já não possui configuração.');
+        }
+
+        if ($configuration->filial_id !== $filial->id) {
+            return $this->error(
+                'A instância geral deve ser administrada pela filial em que foi configurada.',
+                'GLOBAL_CONFIGURATION_MANAGED_BY_ANOTHER_BRANCH',
+                409,
+            );
         }
 
         try {
@@ -504,6 +611,7 @@ class WhatsAppConfigurationController extends Controller
         return [
             'id' => $configuration->id,
             'filial_id' => $configuration->filial_id,
+            'is_global' => $configuration->is_global,
             'provider' => $configuration->provider,
             'instance_name' => $configuration->instance_name,
             'status' => $configuration->status,
@@ -533,6 +641,26 @@ class WhatsAppConfigurationController extends Controller
             'filial_id' => $filial->id,
             'user_id' => $request->user()?->id,
         ]);
+    }
+
+    private function configurationFor(Filial $filial): ?WhatsAppConfiguration
+    {
+        return WhatsAppConfiguration::resolveForFilial($filial->id);
+    }
+
+    private function globalConflict(Filial $filial): ?JsonResponse
+    {
+        $global = WhatsAppConfiguration::query()->where('is_global', true)->first();
+
+        if ($global && $global->filial_id !== $filial->id) {
+            return $this->error(
+                'Existe uma instância geral ativa. Desative-a na filial de origem antes de configurar outra.',
+                'GLOBAL_CONFIGURATION_ACTIVE',
+                409,
+            );
+        }
+
+        return null;
     }
 
     private function success(mixed $data = null, string $message = 'Operação realizada com sucesso.', int $status = 200): JsonResponse

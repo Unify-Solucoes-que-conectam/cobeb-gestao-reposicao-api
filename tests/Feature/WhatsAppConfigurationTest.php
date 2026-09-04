@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Filial;
 use App\Models\Usuario;
 use App\Models\WhatsAppConfiguration;
+use App\Support\WhatsAppService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -108,6 +109,67 @@ class WhatsAppConfigurationTest extends TestCase
     public function test_public_registration_is_disabled(): void
     {
         $this->postJson('/auth/register', [])->assertNotFound();
+    }
+
+    public function test_a_global_instance_is_resolved_for_every_branch(): void
+    {
+        $owner = Filial::create(['codigo' => '10', 'descricao' => 'Matriz']);
+        $other = Filial::create(['codigo' => '20', 'descricao' => 'Filial 20']);
+        $administrator = $this->user('administrador');
+        Sanctum::actingAs($administrator);
+
+        $configuration = WhatsAppConfiguration::create([
+            'filial_id' => $owner->id,
+            'is_global' => true,
+            'global_slot' => 'global',
+            'provider' => 'baileys',
+            'instance_name' => 'cobeb-global',
+            'instance_api_key' => 'global-key',
+            'status' => 'connected',
+            'created_by' => $administrator->id,
+            'updated_by' => $administrator->id,
+        ]);
+
+        $response = $this->getJson('/whatsapp/configurations')->assertOk();
+        $entry = collect($response->json('data'))->firstWhere('filial.id', $other->id);
+
+        $this->assertTrue($entry['uses_global']);
+        $this->assertSame($configuration->id, $entry['configuration']['id']);
+        $this->assertSame($owner->id, WhatsAppConfiguration::resolveForFilial($other->id)?->filial_id);
+
+        Http::fake(['*/message/sendText/cobeb-global' => Http::response(['key' => ['id' => 'message-id']], 201)]);
+        app(WhatsAppService::class)->sendMessage($other->id, '37999999999', 'Teste global');
+
+        Http::assertSent(fn($request) => str_ends_with($request->url(), '/message/sendText/cobeb-global'));
+    }
+
+    public function test_enabling_another_global_instance_keeps_only_one_active(): void
+    {
+        $first = Filial::create(['codigo' => '30', 'descricao' => 'Filial 30']);
+        $second = Filial::create(['codigo' => '40', 'descricao' => 'Filial 40']);
+        $administrator = $this->user('administrador');
+        Sanctum::actingAs($administrator);
+
+        foreach ([[$first, true], [$second, false]] as [$filial, $global]) {
+            WhatsAppConfiguration::create([
+                'filial_id' => $filial->id,
+                'is_global' => $global,
+                'global_slot' => $global ? 'global' : null,
+                'provider' => 'baileys',
+                'instance_name' => 'cobeb-' . $filial->codigo,
+                'status' => 'connected',
+                'created_by' => $administrator->id,
+                'updated_by' => $administrator->id,
+            ]);
+        }
+
+        $this->putJson("/whatsapp/configurations/{$second->id}/global", ['enabled' => true])
+            ->assertOk()
+            ->assertJsonPath('data.is_global', true)
+        ;
+
+        $this->assertSame(1, WhatsAppConfiguration::query()->where('is_global', true)->count());
+        $this->assertTrue(WhatsAppConfiguration::query()->where('filial_id', $second->id)->firstOrFail()->is_global);
     }
 
     private function user(string $role): Usuario

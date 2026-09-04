@@ -14,7 +14,7 @@ class WhatsAppConfiguration extends Model
     public const PROVIDER_BAILEYS = 'baileys';
 
     protected $fillable = [
-        'filial_id', 'provider', 'instance_name', 'instance_id',
+        'filial_id', 'is_global', 'global_slot', 'provider', 'instance_name', 'instance_id',
         'instance_api_key', 'meta_access_token', 'meta_phone_number_id',
         'meta_business_account_id', 'token_expires_at', 'status',
         'connected_phone', 'connected_at', 'last_checked_at', 'last_error', 'created_by', 'updated_by',
@@ -27,6 +27,7 @@ class WhatsAppConfiguration extends Model
         return [
             'instance_api_key' => 'encrypted',
             'meta_access_token' => 'encrypted',
+            'is_global' => 'boolean',
             'token_expires_at' => 'datetime',
             'connected_at' => 'datetime',
             'last_checked_at' => 'datetime',
@@ -41,5 +42,15 @@ class WhatsAppConfiguration extends Model
     public function templates()
     {
         return $this->hasMany(WhatsAppTemplate::class, 'whatsapp_configuration_id');
+    }
+
+    public static function resolveForFilial(string $filialId): ?self
+    {
+        return static::query()
+            ->with('templates')
+            ->where('is_global', true)
+            ->first()
+            ?? static::query()->with('templates')->where('filial_id', $filialId)->first()
+        ;
     }
 }
