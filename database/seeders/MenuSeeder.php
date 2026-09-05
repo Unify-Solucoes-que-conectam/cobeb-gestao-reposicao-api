@@ -12,7 +12,6 @@ class MenuSeeder extends Seeder
      */
     public function run(): void
     {
-
         // Step 1: Insert parent menus
         Menu::create([
             'titulo' => 'Avarias',
@@ -45,6 +44,7 @@ class MenuSeeder extends Seeder
             'rota' => '/admin/gerenciar/usuarios',
             'ordem' => 1,
             'menu_pai_id' => $gerenciar->id,
+            'required_role' => 'administrador',
         ]);
 
         Menu::create([
@@ -61,6 +61,15 @@ class MenuSeeder extends Seeder
             'rota' => '/admin/gerenciar/mapas',
             'ordem' => 3,
             'menu_pai_id' => $gerenciar->id,
+        ]);
+
+        Menu::create([
+            'titulo' => 'WhatsApp',
+            'icone' => 'MessageCircleMore',
+            'rota' => '/admin/gerenciar/whatsapp',
+            'ordem' => 4,
+            'menu_pai_id' => $gerenciar->id,
+            'required_role' => 'administrador',
         ]);
     }
 }

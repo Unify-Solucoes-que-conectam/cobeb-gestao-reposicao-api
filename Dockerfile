@@ -11,6 +11,7 @@ RUN apt-get update \
         libjpeg62-turbo-dev \
         libonig-dev \
         libpng-dev \
+        libsqlite3-dev \
         libxml2-dev \
         libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -22,6 +23,7 @@ RUN apt-get update \
         mbstring \
         pcntl \
         pdo_mysql \
+        pdo_sqlite \
         zip \
     && a2enmod rewrite headers expires \
     && sed -ri -e "s!/var/www/html!${APACHE_DOCUMENT_ROOT}!g" \

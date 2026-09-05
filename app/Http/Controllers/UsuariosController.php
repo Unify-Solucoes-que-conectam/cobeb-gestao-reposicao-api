@@ -10,17 +10,38 @@ use Illuminate\Validation\Rules\Password as RulesPassword;
 
 class UsuariosController extends Controller
 {
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            ...Usuario::createRules(),
+        ], Usuario::messages());
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ocorreu um erro ao validar os dados do usuário.',
+                'debug_errors' => $validator->errors(),
+            ], 422);
+        }
+
+        Usuario::create($validator->validated() + ['primeiro_acesso' => true]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Usuário registrado com sucesso.',
+        ], 201);
+    }
 
     // Listar todos os usuarios
     public function index(Request $request)
     {
-
         // consultar dados dos usuários e filtrar por nome, cpf ou role se os parâmetros forem fornecidos
         $query = Usuario::query();
 
         if ($request->filled('search')) {
             $query->where('nome', 'like', '%' . $request->input('search') . '%')
-                ->orWhere('cpf', 'like', '%' . $request->input('search') . '%');
+                ->orWhere('cpf', 'like', '%' . $request->input('search') . '%')
+            ;
         }
 
         if ($request->filled('role')) {
@@ -33,12 +54,13 @@ class UsuariosController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Consulta de usuários realizada com sucesso.',
-                'data' => $usuarios
+                'data' => $usuarios,
             ]);
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao consultar usuários.'
+                'message' => 'Erro ao consultar usuários.',
             ], 500);
         }
     }
@@ -59,7 +81,7 @@ class UsuariosController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -71,7 +93,7 @@ class UsuariosController extends Controller
             if (!$usuario) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Usuário não encontrado.'
+                    'message' => 'Usuário não encontrado.',
                 ]);
             }
 
@@ -81,12 +103,13 @@ class UsuariosController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Dados do usuário atualizados com sucesso.'
+                'message' => 'Dados do usuário atualizados com sucesso.',
             ]);
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao atualizar os dados do usuário: ' . $e->getMessage()
+                'message' => 'Erro ao atualizar os dados do usuário: ' . $e->getMessage(),
             ]);
         }
     }
@@ -106,16 +129,18 @@ class UsuariosController extends Controller
             // dados do usuário formatados
             $usuarioArray = $usuario->toArray();
             $usuarioArray['usuario_responsavel_id'] = $usuario->usuario_responsavel_id;
+
             return response()->json([
                 'success' => true,
                 'message' => 'Usuário encontrado com sucesso.',
-                'data' => $usuarioArray
+                'data' => $usuarioArray,
             ]);
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao consultar usuário.',
-                'data' => $e->getMessage()
+                'data' => $e->getMessage(),
             ], 500);
         }
     }
@@ -124,6 +149,7 @@ class UsuariosController extends Controller
     public function destroy($id)
     {
         $usuario = Usuario::find($id);
+
         try {
             if (!$usuario) {
                 return response()->json([
@@ -132,15 +158,17 @@ class UsuariosController extends Controller
                 ], 404);
             }
             $usuario->delete();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Usuário deletado com sucesso.',
             ]);
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao deletar usuário.',
-                'data' => $e->getMessage()
+                'data' => $e->getMessage(),
             ], 400);
         }
     }
@@ -148,7 +176,6 @@ class UsuariosController extends Controller
     // função para alterar a senha do usuário
     public function alterarSenha(Request $request, $id)
     {
-
         // configurar regras de validação
         $rules = [
             'senha' => ['required', 'confirmed:confirmar_senha', RulesPassword::default()],
@@ -166,7 +193,7 @@ class UsuariosController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -178,7 +205,7 @@ class UsuariosController extends Controller
             if (!$usuario) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Usuário não encontrado.'
+                    'message' => 'Usuário não encontrado.',
                 ]);
             }
 
@@ -195,12 +222,13 @@ class UsuariosController extends Controller
                 'success' => true,
                 'message' => $request->user()->id === $usuario->id
                     ? 'Sua senha foi alterada com sucesso, faça login novamente.'
-                    : 'Senha alterada com sucesso.'
+                    : 'Senha alterada com sucesso.',
             ]);
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao alterar a senha: ' . $e->getMessage()
+                'message' => 'Erro ao alterar a senha: ' . $e->getMessage(),
             ]);
         }
     }
@@ -212,7 +240,6 @@ class UsuariosController extends Controller
      */
     public function getMenusFavoritos(Request $request)
     {
-
         $user = $request->user();
 
         /** @var Usuario $user Usuário autenticado */
@@ -222,7 +249,8 @@ class UsuariosController extends Controller
             ->menus_favoritos()
             ->with('menu_pai')
             ->get()
-            ->setHidden(['pivot']);
+            ->setHidden(['pivot'])
+        ;
 
         return response()->json([
             'success' => true,
@@ -242,7 +270,8 @@ class UsuariosController extends Controller
 
             $result = $user
                 ->menus_favoritos()
-                ->toggle($menu->id);
+                ->toggle($menu->id)
+            ;
 
             $menu->load('menu_pai');
 
@@ -258,7 +287,8 @@ class UsuariosController extends Controller
                     'menu' => $menu,
                 ],
             ]);
-        } catch (\Throwable $th) {
+        }
+        catch (\Throwable $th) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao favoritar/desfavoritar o menu.',

@@ -1,14 +1,18 @@
 <?php
 
 use App\Http\Controllers\AuthController;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\WhatsAppMediaController;
 use App\Support\AppRouter;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Route;
 
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 Route::post('auth/login', [AuthController::class, 'login'])->name('auth.login');
-Route::post('auth/register', [AuthController::class, 'register']);
+Route::get('whatsapp/media/{encodedPath}', [WhatsAppMediaController::class, 'show'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->name('whatsapp.media')
+;
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('auth/logout', [AuthController::class, 'logout']);

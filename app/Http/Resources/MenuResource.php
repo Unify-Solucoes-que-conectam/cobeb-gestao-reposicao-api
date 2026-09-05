@@ -21,6 +21,7 @@ class MenuResource extends JsonResource
             'rota' => $this->rota,
             'ordem' => $this->ordem,
             'menu_pai_id' => $this->menu_pai_id,
+            'required_role' => $this->required_role,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'sub_menus' => MenuResource::collection($this->whenLoaded('subMenus')),

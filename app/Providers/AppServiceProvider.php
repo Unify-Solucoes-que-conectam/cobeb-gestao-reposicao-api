@@ -3,11 +3,9 @@
 namespace App\Providers;
 
 use App\Broadcasting\DatabaseChannel;
-use App\Broadcasting\GmailChannel;
 use App\Models\PersonalAccessToken;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Notifications\ChannelManager;
-use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -25,6 +23,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::before(fn($user) => $user->role === 'administrador' ? true : null);
+        Gate::define('manage-whatsapp', fn($user) => $user->role === 'administrador');
+        Gate::define('manage-users', fn($user) => $user->role === 'administrador');
 
         /**
          * Define a regra padrão para novas senhas:
@@ -47,10 +48,6 @@ class AppServiceProvider extends ServiceProvider
 
         // Registra um novo canal de transmissão para o banco de dados
         $this->app->make(ChannelManager::class)->extend('database', fn() => new DatabaseChannel());
-
-        RateLimiter::for('whatsapp', function () {
-            return Limit::perMinute(config('evolution.rate_limit', 20));
-        });
 
         if ($this->app->environment('production')) {
             URL::forceRootUrl(config('app.url'));
