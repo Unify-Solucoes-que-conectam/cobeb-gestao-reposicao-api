@@ -89,6 +89,41 @@ class EvolutionClient
         ), 'A Evolution recusou a mensagem de texto.');
     }
 
+    /**
+     * @return array<string, bool> Resultado indexado pelo número internacional sem JID.
+     */
+    public function whatsappNumbers(WhatsAppConfiguration $configuration, array $numbers): array
+    {
+        $payload = $this->json(
+            $this->request($configuration)->post(
+                "{$this->baseUrl}/chat/whatsappNumbers/{$configuration->instance_name}",
+                ['numbers' => array_values($numbers)],
+            ),
+            'Não foi possível validar o número no WhatsApp.',
+            'EVOLUTION_UNAVAILABLE',
+        );
+
+        $rows = array_is_list($payload)
+            ? $payload
+            : ($payload['numbers'] ?? $payload['data']['numbers'] ?? $payload['data'] ?? []);
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $number = preg_replace('/\D/', '', (string) ($row['number'] ?? $row['jid'] ?? '')) ?? '';
+
+            if ($number !== '') {
+                $result[$number] = (bool) ($row['exists'] ?? false);
+            }
+        }
+
+        return $result;
+    }
+
     public function sendMedia(
         WhatsAppConfiguration $configuration,
         string $number,
@@ -175,10 +210,21 @@ class EvolutionClient
             return $response->json() ?? [];
         }
 
+        $body = $response->json();
+        $upstreamMessage = is_array($body)
+            ? ($body['message'] ?? $body['error'] ?? null)
+            : null;
+
+        if (is_array($upstreamMessage)) {
+            $upstreamMessage = json_encode($upstreamMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
         throw new EvolutionException(
             $message,
             $errorCode,
             $response->status() === 401 || $response->status() === 403 ? 422 : 502,
+            $response->status(),
+            is_string($upstreamMessage) ? mb_substr($upstreamMessage, 0, 500) : null,
         );
     }
 }

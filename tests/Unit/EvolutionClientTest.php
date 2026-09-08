@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\EvolutionClient;
+use App\Models\WhatsAppConfiguration;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -42,5 +43,31 @@ class EvolutionClientTest extends TestCase
             fn(Request $request) => $request['integration'] === 'WHATSAPP-BAILEYS'
             && $request['qrcode'] === true,
         );
+    }
+
+    public function test_it_reads_the_whatsapp_number_array_returned_by_evolution(): void
+    {
+        Http::fake(['*/chat/whatsappNumbers/*' => Http::response([
+            ['jid' => '553732590820@s.whatsapp.net', 'exists' => false, 'number' => '553732590820'],
+            ['jid' => '5537998247669@s.whatsapp.net', 'exists' => true, 'number' => '5537998247669'],
+        ])]);
+        $configuration = new WhatsAppConfiguration(['instance_name' => 'cobeb-1']);
+
+        $result = app(EvolutionClient::class)->whatsappNumbers($configuration, ['553732590820', '5537998247669']);
+
+        $this->assertFalse($result['553732590820']);
+        $this->assertTrue($result['5537998247669']);
+    }
+
+    public function test_it_reads_the_documented_wrapped_number_response(): void
+    {
+        Http::fake(['*/chat/whatsappNumbers/*' => Http::response([
+            'numbers' => [['number' => '5537998247669', 'exists' => true]],
+        ])]);
+        $configuration = new WhatsAppConfiguration(['instance_name' => 'cobeb-1']);
+
+        $result = app(EvolutionClient::class)->whatsappNumbers($configuration, ['5537998247669']);
+
+        $this->assertTrue($result['5537998247669']);
     }
 }

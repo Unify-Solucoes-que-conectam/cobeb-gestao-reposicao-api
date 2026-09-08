@@ -21,7 +21,18 @@ class ClienteTelefones extends Model
         'cliente_id',
         'numero',
         'isWhatsapp',
+        'whatsapp_validation_status',
+        'whatsapp_verified_at',
+        'whatsapp_validation_provider',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'isWhatsapp' => 'boolean',
+            'whatsapp_verified_at' => 'datetime',
+        ];
+    }
 
     public function cliente()
     {

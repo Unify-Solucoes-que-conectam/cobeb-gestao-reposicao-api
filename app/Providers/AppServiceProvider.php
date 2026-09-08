@@ -26,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(fn($user) => $user->role === 'administrador' ? true : null);
         Gate::define('manage-whatsapp', fn($user) => $user->role === 'administrador');
         Gate::define('manage-users', fn($user) => $user->role === 'administrador');
+        Gate::define('manage-avaria-contact', fn($user) => $user->role === 'monitoramento');
 
         /**
          * Define a regra padrão para novas senhas:

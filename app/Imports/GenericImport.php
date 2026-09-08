@@ -163,13 +163,14 @@ class GenericImport
             $isWhatsapp = ($totalTelefones === 1) || ($index === 0);
             $telefoneLimpo = preg_replace('/[^0-9]/', '', $telefone);
 
-            ClienteTelefones::updateOrCreate(
+            ClienteTelefones::firstOrCreate(
                 [
                     'cliente_id' => $cliente->id,
                     'numero' => $telefoneLimpo,
                 ],
                 [
                     'isWhatsapp' => $isWhatsapp,
+                    'whatsapp_validation_status' => 'unknown',
                 ],
             );
         }

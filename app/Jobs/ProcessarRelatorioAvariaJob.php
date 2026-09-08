@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\AvariaWhatsAppNotification;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -9,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class ProcessarRelatorioAvariaJob implements ShouldQueue
 {
@@ -26,7 +28,20 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
 
     protected string $filialId;
 
-    public function __construct($avarias, $cliente, $contatoCliente, $protocolo, string $filialId, $mensagem = null)
+    protected array $notificationIds;
+
+    protected ?string $contactToPromoteId;
+
+    public function __construct(
+        $avarias,
+        $cliente,
+        $contatoCliente,
+        $protocolo,
+        string $filialId,
+        $mensagem = null,
+        array $notificationIds = [],
+        ?string $contactToPromoteId = null,
+    )
     {
         $this->avarias = $avarias;
         $this->cliente = $cliente;
@@ -34,6 +49,8 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
         $this->protocolo = $protocolo;
         $this->mensagem = $mensagem;
         $this->filialId = $filialId;
+        $this->notificationIds = $notificationIds;
+        $this->contactToPromoteId = $contactToPromoteId;
     }
 
     public function handle(): void
@@ -80,6 +97,20 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
             basename($nomeArquivo),
             'import_report',
             [$this->cliente->nome, $this->protocolo],
+            $this->notificationIds,
+            $this->contactToPromoteId,
         );
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        if ($this->notificationIds !== []) {
+            AvariaWhatsAppNotification::whereIn('id', $this->notificationIds)->update([
+                'status' => AvariaWhatsAppNotification::STATUS_FAILED,
+                'error_code' => 'WHATSAPP_REPORT_GENERATION_FAILED',
+                'error_message' => 'Não foi possível gerar o relatório para envio.',
+                'last_attempt_at' => now(),
+            ]);
+        }
     }
 }

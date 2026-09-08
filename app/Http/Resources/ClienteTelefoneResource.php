@@ -18,6 +18,8 @@ class ClienteTelefoneResource extends JsonResource
             'id' => $this->id,
             'telefone' => $this->numero,
             'isWhatsapp' => (bool) $this->isWhatsapp,
+            'whatsapp_validation_status' => $this->whatsapp_validation_status ?? 'unknown',
+            'whatsapp_verified_at' => $this->whatsapp_verified_at?->toIso8601String(),
         ];
     }
 }

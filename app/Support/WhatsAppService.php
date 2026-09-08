@@ -115,8 +115,6 @@ class WhatsAppService
 
     private function formatNumber(string $phone): string
     {
-        $cleaned = preg_replace('/\D/', '', $phone) ?? '';
-
-        return strlen($cleaned) <= 11 ? '55' . $cleaned : $cleaned;
+        return app(BrazilianPhoneNumber::class)->international($phone);
     }
 }

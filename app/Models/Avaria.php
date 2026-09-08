@@ -102,6 +102,11 @@ class Avaria extends Model
         return $this->hasMany(ItemAvaria::class, 'avaria_id');
     }
 
+    public function whatsappNotifications()
+    {
+        return $this->hasMany(AvariaWhatsAppNotification::class, 'avaria_id');
+    }
+
     /**
      * Accessor para retornar a Nota Fiscal da Avaria
      * Baseia-se no primeiro item, já que a avaria geralmente pertence a uma mesma nota.
