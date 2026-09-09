@@ -22,6 +22,8 @@ class Troca extends Model
         'quantidade',
         'operacao',
         'data_operacao',
+        'correcoes',
+        'motivo_parcial',
     ];
 
     public function produtoNotaFiscal()

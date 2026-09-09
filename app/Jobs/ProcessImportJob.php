@@ -23,13 +23,18 @@ class ProcessImportJob implements ShouldQueue
 
     private string $type;
 
+    private array $options = [];
+    private ?string $userId = null;
+
     public $timeout = 600;
 
-    public function __construct(string $batchId, string $path, string $type)
+    public function __construct(string $batchId, string $path, string $type, array $options = [], ?string $userId = null)
     {
         $this->batchId = $batchId;
         $this->path = $path;
         $this->type = $type;
+        $this->options = $options;
+        $this->userId = $userId;
     }
 
     public function handle(): void
@@ -65,11 +70,13 @@ class ProcessImportJob implements ShouldQueue
                 return;
             }
 
-            $import = new GenericImport($this->batchId, $this->type, $totalRows);
+            $import = new GenericImport($this->batchId, $this->type, $totalRows, $this->options, $this->userId);
             $import->processRecords($records);
 
             $errorCount = $import->getErrorCount();
-            $successCount = $totalRows - $errorCount;
+            $ignoredCount = $import->getIgnoredCount();
+            $successCount = $totalRows - $errorCount - $ignoredCount;
+            $batch->update(['row_errors' => $import->getRowErrors()]);
 
             if ($errorCount === $totalRows) {
                 $batch->update([
@@ -86,9 +93,7 @@ class ProcessImportJob implements ShouldQueue
                     'processed_rows' => $totalRows,
                     'percentage' => 100,
                     'current_step' => 'done',
-                    'last_log' => $errorCount > 0
-                        ? "Completed: {$successCount} imported, {$errorCount} errors"
-                        : "Import completed — {$successCount} rows imported",
+                    'last_log' => "Concluído: {$successCount} importados, {$ignoredCount} ignorados, {$errorCount} erros.",
                 ]);
 
                 if ($this->type === 'vendas_trocas' && !empty($import->getTrocas())) {
@@ -112,7 +117,7 @@ class ProcessImportJob implements ShouldQueue
                             $saudacao = 'Boa noite';
                         }
 
-                        $mensagem = "{$saudacao} *{$cliente->nome}*!\n\nSua troca referente às avarias registradas em " . Carbon::parse($dtOperacao)->format('d/m/Y') . " será enviada hoje!\n\nSegue relação dos itens com mais detalhes.";
+                        $mensagem = "{$saudacao} *{$cliente->nome}*!\n\n" . implode("\n\n", $dadosRelatorio['avisos'] ?? []) . "\n\nSegue a relação dos itens registrados.";
                         $contatoCliente = $dadosRelatorio['contatoCliente'] ?? '';
                         $protocolo = $dadosRelatorio['protocolo'] ?? null;
 
