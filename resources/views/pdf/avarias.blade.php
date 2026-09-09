@@ -219,6 +219,11 @@
                     <td>{{ $item->quantidade_avariada }}</td>
                     <td>{{ $item->tipoAvaria->descricao ?? 'N/A' }}</td>
                 </tr>
+                @if(!empty($item->observacao_troca))
+                <tr>
+                    <td colspan="4" style="text-align: left;">{{ $item->observacao_troca }}</td>
+                </tr>
+                @endif
                 @empty
                 <tr>
                     <td colspan="4" style="text-align: center; padding: 15px;">Nenhum produto registrado para esta nota.</td>

@@ -40,6 +40,7 @@ class ImportProgressUpdated implements ShouldBroadcast
             'processed_rows' => $this->batch->processed_rows,
             'percentage' => $this->batch->percentage,
             'last_log' => $this->batch->last_log,
+            'row_errors' => $this->batch->row_errors ?? [],
             'current_step' => $this->batch->current_step,
             'updated_at' => $this->batch->updated_at?->toISOString(),
         ];

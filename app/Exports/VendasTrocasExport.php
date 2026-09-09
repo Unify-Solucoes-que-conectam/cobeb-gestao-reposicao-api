@@ -4,6 +4,9 @@ namespace App\Exports;
 
 use App\Models\Cliente;
 use App\Models\Produto;
+use App\Models\NotaFiscal;
+use PhpOffice\PhpSpreadsheet\NamedRange;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
 use Maatwebsite\Excel\Events\AfterSheet;
@@ -79,78 +82,116 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
 
     public function registerEvents(): array
     {
-        $clientes = Cliente::pluck('codigo')->toArray();
-        $produtos = Produto::pluck('codigo')->toArray();
-        $operacoes = ['1', '5', '39'];
-
         return [
-            AfterSheet::class => function (AfterSheet $event) use ($clientes, $produtos, $operacoes) {
-                $spreadsheet = $event->sheet->getDelegate()->getParent();
-
-                // 1. Cria uma aba auxiliar para armazenar as listas
-                $listSheet = $spreadsheet->createSheet();
-                $listSheet->setTitle('Clientes_Produtos');
-
-                // Oculta a aba para o usuário final não ver
-                $listSheet->setSheetState(Worksheet::SHEETSTATE_HIDDEN);
-
-                // 2. Preenche a coluna A da aba auxiliar com os Clientes
-                foreach ($clientes as $index => $codigo) {
-                    $row = $index + 1;
-                    $listSheet->setCellValue("A{$row}", $codigo);
-                }
-                $totalClientes = count($clientes);
-
-                // 3. Preenche a coluna B da aba auxiliar com os Produtos
-                foreach ($produtos as $index => $codigo) {
-                    $row = $index + 1;
-                    $listSheet->setCellValue("B{$row}", $codigo);
-                }
-                $totalProdutos = count($produtos);
-
-                // 4. Preenche a coluna C da aba auxiliar com as Operações
-                foreach ($operacoes as $index => $codigo) {
-                    $row = $index + 1;
-                    $listSheet->setCellValue("C{$row}", $codigo);
-                }
-                $totalOperacoes = count($operacoes);
-
-                // 4. Aplica as validações apontando para o intervalo de células
+            AfterSheet::class => function (AfterSheet $event) {
                 $mainSheet = $event->sheet->getDelegate();
-
-                if ($totalClientes > 0) {
-                    $validationA = new DataValidation();
-                    $validationA->setType(DataValidation::TYPE_LIST);
-                    $validationA->setErrorStyle(DataValidation::STYLE_INFORMATION);
-                    $validationA->setAllowBlank(true);
-                    $validationA->setShowDropDown(true);
-                    // Aponta para a coluna A da aba oculta
-                    $validationA->setFormula1("Clientes_Produtos!\$A\$1:\$A\${$totalClientes}");
-                    $mainSheet->setDataValidation("A2:A10000", $validationA);
+                $spreadsheet = $mainSheet->getParent();
+                $lists = $spreadsheet->createSheet()->setTitle('Clientes_Produtos');
+                $notes = $spreadsheet->createSheet()->setTitle('Notas_Cliente');
+                $items = $spreadsheet->createSheet()->setTitle('Produtos_Nota');
+                foreach ([$lists, $notes, $items] as $sheet) {
+                    $sheet->setSheetState(Worksheet::SHEETSTATE_HIDDEN);
                 }
 
-                if ($totalProdutos > 0) {
-                    $validationE = new DataValidation();
-                    $validationE->setType(DataValidation::TYPE_LIST);
-                    $validationE->setErrorStyle(DataValidation::STYLE_INFORMATION);
-                    $validationE->setAllowBlank(true);
-                    $validationE->setShowDropDown(true);
-                    // Aponta para a coluna B da aba oculta
-                    $validationE->setFormula1("Clientes_Produtos!\$B\$1:\$B\${$totalProdutos}");
-                    $mainSheet->setDataValidation("F2:F10000", $validationE);
+                // Texto explícito preserva códigos e evita interpretar dados como fórmulas.
+                $write = static function (Worksheet $sheet, string $cell, $value): void {
+                    $sheet->setCellValueExplicit($cell, (string) $value, DataType::TYPE_STRING);
+                };
+                $name = static function (string $name, Worksheet $sheet, string $range) use ($spreadsheet): void {
+                    $spreadsheet->addNamedRange(new NamedRange($name, $sheet, $range));
+                };
+                $clientes = Cliente::orderBy('codigo')->pluck('codigo');
+                $produtos = Produto::orderBy('codigo')->pluck('codigo');
+                foreach ($clientes as $index => $codigo) {
+                    $write($lists, 'A' . ($index + 1), $codigo);
                 }
+                foreach ($produtos as $index => $codigo) {
+                    $write($lists, 'B' . ($index + 1), $codigo);
+                }
+                foreach (['1', '5', '39'] as $index => $codigo) {
+                    $write($lists, 'C' . ($index + 1), $codigo);
+                }
+                $name('ListaClientes', $lists, '$A$1:$A$' . max(1, $clientes->count()));
+                $name('ListaProdutos', $lists, '$B$1:$B$' . max(1, $produtos->count()));
+                $name('ListaOperacoes', $lists, '$C$1:$C$3');
+                $name('ListaVazia', $lists, '$D$1');
 
-                if ($totalOperacoes > 0) {
-                    $validationB = new DataValidation();
-                    $validationB->setType(DataValidation::TYPE_LIST);
-                    $validationB->setErrorStyle(DataValidation::STYLE_INFORMATION);
-                    $validationB->setAllowBlank(true);
-                    $validationB->setShowDropDown(true);
-                    // Aponta para a coluna C da aba oculta
-                    $validationB->setFormula1("Clientes_Produtos!\$C\$1:\$C\${$totalOperacoes}");
-                    $mainSheet->setDataValidation("B2:B10000", $validationB);
+                // Listas verticais: não há uma coluna por cliente/nota nem limite de 16 mil grupos.
+                // A:B mapeia a chave ao nome do intervalo; C contém os valores da lista.
+                $noteRow = 1;
+                $itemRow = 1;
+                $clientMapRow = 1;
+                $noteMapRow = 1;
+                $clientId = null;
+                $clientCode = null;
+                $clientStart = 1;
+                $finishClient = function () use (&$clientMapRow, &$clientCode, &$clientStart, &$noteRow, $write, $name, $notes): void {
+                    if ($clientCode === null) {
+                        return;
+                    }
+                    $rangeName = 'NotasGrupo_' . $clientMapRow;
+                    $write($notes, 'A' . $clientMapRow, $clientCode);
+                    $write($notes, 'B' . $clientMapRow, $rangeName);
+                    $name($rangeName, $notes, '$C$' . $clientStart . ':$C$' . ($noteRow - 1));
+                    $clientMapRow++;
+                };
+
+                $invoices = NotaFiscal::query()
+                    ->with(['cliente:id,codigo', 'produtos.produto:id,codigo'])
+                    ->whereHas('cliente')
+                    ->orderBy('cliente_id')->orderBy('numero')->orderBy('id');
+                foreach ($invoices->lazy(500) as $invoice) {
+                    if ($clientId !== $invoice->cliente_id) {
+                        $finishClient();
+                        $clientId = $invoice->cliente_id;
+                        $clientCode = (string) $invoice->cliente->codigo;
+                        $clientStart = $noteRow;
+                    }
+                    $write($notes, 'C' . $noteRow++, $invoice->numero);
+                    $start = $itemRow;
+                    foreach ($invoice->produtos->pluck('produto.codigo')->filter(fn ($code) => $code !== null)->unique() as $code) {
+                        $write($items, 'C' . $itemRow++, $code);
+                    }
+                    $rangeName = 'ListaVazia';
+                    if ($itemRow > $start) {
+                        $rangeName = 'ProdutosGrupo_' . $noteMapRow;
+                        $name($rangeName, $items, '$C$' . $start . ':$C$' . ($itemRow - 1));
+                    }
+                    $write($items, 'A' . $noteMapRow, $clientCode . '|' . $invoice->numero);
+                    $write($items, 'B' . $noteMapRow++, $rangeName);
                 }
-            }
+                $finishClient();
+                $name('MapaNotas', $notes, '$A$1:$B$' . max(1, $clientMapRow - 1));
+                $name('MapaProdutos', $items, '$A$1:$B$' . max(1, $noteMapRow - 1));
+
+                $validation = static function (string $formula, string $prompt, bool $strict = true): DataValidation {
+                    $rule = new DataValidation();
+                    $rule->setType(DataValidation::TYPE_LIST);
+                    $rule->setErrorStyle(DataValidation::STYLE_STOP);
+                    $rule->setAllowBlank(true);
+                    $rule->setShowDropDown(true);
+                    $rule->setShowInputMessage(true);
+                    $rule->setPromptTitle('Seleção assistida');
+                    $rule->setPrompt($prompt);
+                    $rule->setShowErrorMessage($strict);
+                    $rule->setErrorTitle('Valor fora da lista');
+                    $rule->setError('Selecione um valor disponível para os dados desta linha.');
+                    $rule->setFormula1($formula);
+                    return $rule;
+                };
+                $mainSheet->setDataValidation('A2:A10000', $validation('ListaClientes', 'Selecione o cliente. Ao alterá-lo, selecione novamente a nota e o produto.'));
+                $mainSheet->setDataValidation('B2:B10000', $validation('ListaOperacoes', '1: entrada; 5 e 39: troca.'));
+                // Referências de linha relativas acompanham cada linha, inclusive ao colar/copiar.
+                $mainSheet->setDataValidation('E2:E10000', $validation(
+                    'INDIRECT(IFERROR(VLOOKUP($A2&"",MapaNotas,2,FALSE),"ListaVazia"))',
+                    'Selecione uma nota do cliente. Para entrada (operação 1), pode digitar uma nota nova. Ao alterar a nota, selecione novamente o produto.',
+                    false
+                ));
+                $mainSheet->setDataValidation('F2:F10000', $validation(
+                    'INDIRECT(IF($B2&""="1","ListaProdutos",IFERROR(VLOOKUP($A2&"|"&$E2,MapaProdutos,2,FALSE),"ListaVazia")))',
+                    'Troca: selecione cliente e nota para listar seus produtos. Entrada: selecione um produto cadastrado.'
+                ));
+            },
         ];
     }
 

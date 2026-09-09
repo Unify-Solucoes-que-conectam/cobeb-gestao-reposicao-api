@@ -23,9 +23,11 @@ class ImportBatch extends Model
     'percentage',
     'last_log',
     'current_step',
+    'row_errors',
   ];
 
   protected $casts = [
+    'row_errors' => 'array',
     'total_rows' => 'int',
     'processed_rows' => 'int',
     'percentage' => 'int',

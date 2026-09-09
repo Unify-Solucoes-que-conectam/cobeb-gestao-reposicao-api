@@ -19,6 +19,8 @@ use App\Models\ProdutoNotaFiscal;
 use App\Models\TipoMarca;
 use App\Models\Troca;
 use App\Models\Usuario;
+use App\Services\ImportTrocaService;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
@@ -40,11 +42,18 @@ class GenericImport
 
     private array $trocas = [];
 
-    public function __construct(string $batchId, string $type, int $totalRows)
+    private int $ignoredCount = 0;
+    private array $rowErrors = [];
+    private array $options = [];
+    private ?string $userId = null;
+
+    public function __construct(string $batchId, string $type, int $totalRows, array $options = [], ?string $userId = null)
     {
         $this->batchId = $batchId;
         $this->type = $type;
         $this->totalRows = $totalRows;
+        $this->options = $options;
+        $this->userId = $userId;
     }
 
     public function processRecords(array $records): void
@@ -58,6 +67,7 @@ class GenericImport
                 }
                 catch (\Throwable $exception) {
                     $this->errorCount++;
+                    $this->rowErrors[] = "Registro " . ($this->processedRows + 1) . ": " . $exception->getMessage();
 
                     Log::warning('Import row failed', [
                         'batch_id' => $this->batchId,
@@ -336,69 +346,22 @@ class GenericImport
 
     private function importVendaTroca(array $data): void
     {
-        $numero = trim((string) Arr::get($data, 'nota_fiscal'));
-        $pedido = trim((string) Arr::get($data, 'nr_pedido'));
-        $codCliente = trim((string) Arr::get($data, 'cliente'));
-        $dataOperacao = trim((string) Arr::get($data, 'dt_operacao'));
-        $operacao = trim((string) Arr::get($data, 'operacao'));
-        $data_emissao = trim((string) Arr::get($data, 'emissao'));
-
-        $produto = trim((string) Arr::get($data, 'produto'));
-        $quantidade = (int) Arr::get($data, 'quantidade');
-        $valorDesconto = $this->toDecimal(Arr::get($data, 'desconto'));
-        $valorAdicional = $this->toDecimal(Arr::get($data, 'adic_fina'));
-        $valorTotal = $this->toDecimal(Arr::get($data, 'total'));
-
-        if (blank($numero)) {
-            throw new \RuntimeException('Missing numero');
-        }
-
-        $clienteId = $this->resolveFk(Cliente::class, 'codigo', $codCliente);
-
-        $notaFiscal = NotaFiscal::updateOrCreate(
-            ['numero' => $numero],
-            [
-                'pedido' => $pedido,
-                'cliente_id' => $clienteId,
-                'data_emissao' => $this->toDate($data_emissao),
-            ],
-        );
-
-        $produtoId = $this->resolveFk(Produto::class, 'codigo', $produto);
-
-        if (!$produtoId) {
-            throw new \RuntimeException("Produto com código '{$produto}' não foi encontrado no banco de dados.");
-        }
-
-        $produtoNotaFiscal = ProdutoNotaFiscal::updateOrCreate(
-            [
-                'nota_fiscal_id' => $notaFiscal->id,
-                'produto_id' => $produtoId,
-            ],
-            [
-                'quantidade' => $quantidade,
-                'valor_desconto' => $valorDesconto,
-                'valor_adicional' => $valorAdicional,
-                'valor_total' => $valorTotal,
-                'operacao' => $operacao,
-                'data_operacao' => $this->toDate($dataOperacao),
-            ],
-        );
-
-        if (!in_array((int) $operacao, [5, 39], true) && !in_array($operacao, ['5', '39'], true)) {
+        if (!ImportTrocaService::isTroca($data)) {
+            $this->importEntrada($data);
             return;
         }
-
-        Troca::updateOrCreate(
-            [
-                'produto_nota_fiscal_id' => $produtoNotaFiscal->id,
-                'operacao' => $operacao,
-                'data_operacao' => $this->toDate($dataOperacao),
-            ],
-            [
-                'quantidade' => $quantidade,
-            ],
-        );
+        $result = app(ImportTrocaService::class)->save($data, $this->options, $this->userId);
+        if ($result['status'] === 'ignored') {
+            $this->ignoredCount++;
+            return;
+        }
+        $produtoNotaFiscal = $result['item'];
+        $notaFiscal = $produtoNotaFiscal->notaFiscal;
+        $clienteId = $notaFiscal->cliente_id;
+        $numero = $notaFiscal->numero;
+        $dataOperacao = $result['data'];
+        $operacao = $result['operacao'];
+        $quantidade = $result['quantidade'];
 
         // CORREÇÃO: Busca segura da relação com contatos sem quebrar quando $clienteId é null
         $cliente = $clienteId ? Cliente::with('contatos')->find($clienteId) : null;
@@ -456,9 +419,46 @@ class GenericImport
         ];
 
         $this->trocas[$cliente->id]['notas'][$numero]['itens']->push($itemAvaria);
+        $tipo = $result['troca_id'] ? 'Correção de troca ⚠️' : 'Troca registrada ✅';
+        $aviso = "{$tipo}\n\nSua troca referente às avarias registradas em " . Carbon::parse($dataOperacao)->format('d/m/Y') . ($result['troca_id'] ? ' foi corrigida e' : '') . ' será enviada hoje!';
+        if ($result['troca_id']) $aviso .= "\n\nEsta quantidade substitui a informada anteriormente.";
+        if ($result['parcial']) $aviso .= "\n\nQuantidade aprovada disponível: {$result['aprovada']}. \n\nMotivo do envio parcial: {$result['motivo_parcial']}";
+        $this->trocas[$cliente->id]['avisos'][] = $aviso;
+        // O relatório mantém a explicação também nos provedores que enviam uma legenda de template.
+        $itemAvaria->observacao_troca = $aviso;
+
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────
+
+    private function importEntrada(array $data): void
+    {
+        if (trim((string) ($data['operacao'] ?? '')) !== '1') throw new \RuntimeException('Operação inválida. Use 1, 5 ou 39.');
+        DB::transaction(function () use ($data) {
+            $numero = trim((string) ($data['nota_fiscal'] ?? ''));
+            $clienteId = $this->resolveFk(Cliente::class, 'codigo', trim((string) ($data['cliente'] ?? '')));
+            $produtoId = $this->resolveFk(Produto::class, 'codigo', trim((string) ($data['produto'] ?? '')));
+            $raw = trim((string) ($data['quantidade'] ?? ''));
+            if (!$clienteId || !$produtoId || $numero === '') throw new \RuntimeException('Informe cliente, nota e produto válidos.');
+            if (!preg_match('/^\d+$/', $raw) || (float) $raw < 1 || (float) $raw > 2147483647) throw new \RuntimeException('Quantidade de entrada deve ser inteira e positiva.');
+            $nota = NotaFiscal::where('numero', $numero)->lockForUpdate()->first();
+            if ($nota && $nota->cliente_id !== $clienteId) throw new \RuntimeException('A nota já pertence a outro cliente.');
+            $item = $nota ? ProdutoNotaFiscal::where('nota_fiscal_id', $nota->id)->where('produto_id', $produtoId)->lockForUpdate()->first() : null;
+            if ($item && ($this->options['duplicateAction'] ?? 'ignore') === 'ignore') {
+                $this->ignoredCount++;
+                return;
+            }
+            if ($item && (int) $raw < (int) Troca::where('produto_nota_fiscal_id', $item->id)->lockForUpdate()->get()->sum('quantidade')) {
+                throw new \RuntimeException('A entrada não pode ser reduzida abaixo das trocas já registradas.');
+            }
+            $nota ??= new NotaFiscal(['numero' => $numero, 'cliente_id' => $clienteId]);
+            $nota->fill(['pedido' => trim((string) ($data['nr_pedido'] ?? '')), 'data_emissao' => $this->toDate($data['emissao'] ?? '')])->save();
+            $item ??= new ProdutoNotaFiscal(['nota_fiscal_id' => $nota->id, 'produto_id' => $produtoId]);
+            $item->fill(['quantidade' => (int) $raw, 'operacao' => '1', 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
+                'valor_desconto' => $this->toDecimal($data['desconto'] ?? ''), 'valor_adicional' => $this->toDecimal($data['adic_fina'] ?? ''),
+                'valor_total' => $this->toDecimal($data['total'] ?? '')])->save();
+        }, 3);
+    }
 
     private function resolveFk(string $modelClass, string $column, mixed $value): ?string
     {
@@ -609,6 +609,10 @@ class GenericImport
         return $this->errorCount;
     }
 
+    public function getIgnoredCount(): int { return $this->ignoredCount; }
+
+    public function getRowErrors(): array { return $this->rowErrors; }
+
     public function getTrocas(): array
     {
         $trocasFormatadas = [];
@@ -627,6 +631,7 @@ class GenericImport
                 'data_operacao' => $dadosCliente['data_operacao'],
                 'filial_id' => $dadosCliente['filial_id'],
                 'avarias' => $avarias,
+                'avisos' => $dadosCliente['avisos'] ?? [],
             ];
         }
 

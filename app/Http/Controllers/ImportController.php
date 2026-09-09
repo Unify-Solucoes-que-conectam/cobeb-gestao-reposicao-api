@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessImportJob;
 use App\Models\ImportBatch;
+use App\Services\ImportTrocaService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -25,9 +26,14 @@ class ImportController extends Controller
         $user = $request->user();
 
         // 1. Valide apenas os campos de nível superior e evite o $request->all()
-        $validator = Validator::make($request->only(['type', 'records']), [
+        $validator = Validator::make($request->only(['type', 'records', 'options']), [
             'type'    => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
-            'records' => ['required', 'array', 'min:1', 'max:20000'], // Removido 'records.*'
+            'records' => ['required', 'array', 'min:1', 'max:20000'],
+            'records.*' => ['required', 'array'],
+            'options' => ['nullable', 'array'],
+            'options.duplicateAction' => ['sometimes', 'in:ignore,update'],
+            'records.*.motivo_parcial' => ['nullable', 'string', 'max:1000'],
+            'records.*.confirmacao_correcao' => ['nullable', 'string', 'max:4096'],
         ], [
             'type.required'    => 'Type is required.',
             'type.in'          => 'Type is invalid.',
@@ -45,6 +51,13 @@ class ImportController extends Controller
         }
 
         $records = $request->input('records');
+        $options = $request->input('options') ?? [];
+        if ($request->input('type') === 'vendas_trocas') {
+            $results = app(ImportTrocaService::class)->preview($records, $options);
+            if (collect($results)->contains(fn ($row) => in_array($row['status'], ['error', 'confirmation'], true))) {
+                return response()->json(['success' => false, 'message' => 'Revise as trocas antes de importar.', 'data' => $results], 422);
+            }
+        }
         $path    = 'imports/' . Str::uuid() . '.json';
 
         // 2. Salva o JSON no disco
@@ -61,7 +74,7 @@ class ImportController extends Controller
                 'current_step'   => 'queued',
             ]);
 
-            ProcessImportJob::dispatch($batch->id, $path, $batch->type)
+            ProcessImportJob::dispatch($batch->id, $path, $batch->type, $options, $user?->id)
                 ->onQueue('imports');
 
             return response()->json([
@@ -76,6 +89,27 @@ class ImportController extends Controller
                 'message' => 'Failed to enqueue import process: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    public function validateTrocas(Request $request)
+    {
+
+        $request->validate([
+            'records' => ['required', 'array', 'min:1', 'max:20000'],
+            'records.*' => ['required', 'array'],
+            'records.*.motivo_parcial' => ['nullable', 'string', 'max:1000'],
+            'records.*.confirmacao_correcao' => ['nullable', 'string', 'max:4096'],
+            'options' => ['nullable', 'array'],
+            'options.duplicateAction' => ['sometimes', 'in:ignore,update'],
+        ]);
+
+        $records = $request->input('records', []);
+        $options = $request->input('options', []);
+
+        return response()->json([
+            'success' => true,
+            'data' => app(ImportTrocaService::class)->preview($records, $options)
+        ]);
     }
 
     public function list(Request $request)
