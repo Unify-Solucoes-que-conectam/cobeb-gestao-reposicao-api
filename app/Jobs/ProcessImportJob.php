@@ -23,13 +23,16 @@ class ProcessImportJob implements ShouldQueue
 
     private string $type;
 
+    private array $options = [];
+
     public $timeout = 600;
 
-    public function __construct(string $batchId, string $path, string $type)
+    public function __construct(string $batchId, string $path, string $type, array $options = [])
     {
         $this->batchId = $batchId;
         $this->path = $path;
         $this->type = $type;
+        $this->options = $options;
     }
 
     public function handle(): void
@@ -65,11 +68,12 @@ class ProcessImportJob implements ShouldQueue
                 return;
             }
 
-            $import = new GenericImport($this->batchId, $this->type, $totalRows);
+            $import = new GenericImport($this->batchId, $this->type, $totalRows, $this->options);
             $import->processRecords($records);
 
             $errorCount = $import->getErrorCount();
-            $successCount = $totalRows - $errorCount;
+            $ignoredCount = $import->getIgnoredCount();
+            $successCount = $totalRows - $errorCount - $ignoredCount;
 
             if ($errorCount === $totalRows) {
                 $batch->update([
@@ -86,9 +90,11 @@ class ProcessImportJob implements ShouldQueue
                     'processed_rows' => $totalRows,
                     'percentage' => 100,
                     'current_step' => 'done',
-                    'last_log' => $errorCount > 0
+                    'last_log' => $ignoredCount > 0
+                        ? "Completed: {$successCount} imported, {$ignoredCount} duplicates ignored, {$errorCount} errors"
+                        : ($errorCount > 0
                         ? "Completed: {$successCount} imported, {$errorCount} errors"
-                        : "Import completed — {$successCount} rows imported",
+                        : "Import completed — {$successCount} rows imported"),
                 ]);
 
                 if ($this->type === 'vendas_trocas' && !empty($import->getTrocas())) {

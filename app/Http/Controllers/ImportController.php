@@ -22,12 +22,13 @@ class ImportController extends Controller
 
     public function start(Request $request)
     {
-        $user = $request->user();
 
         // 1. Valide apenas os campos de nível superior e evite o $request->all()
-        $validator = Validator::make($request->only(['type', 'records']), [
+        $validator = Validator::make($request->only(['type', 'records', 'options']), [
             'type'    => ['required', 'in:' . implode(',', self::ALLOWED_TYPES)],
             'records' => ['required', 'array', 'min:1', 'max:20000'], // Removido 'records.*'
+            'options' => ['nullable', 'array'],
+            'options.duplicateAction' => ['in:ignore,update']
         ], [
             'type.required'    => 'Type is required.',
             'type.in'          => 'Type is invalid.',
@@ -35,6 +36,8 @@ class ImportController extends Controller
             'records.array'    => 'Records must be an array.',
             'records.min'      => 'At least one record is required.',
             'records.max'      => 'Maximum of 20000 records per import.',
+            'options.array'    => 'Options must be an object.',
+            'options.duplicateAction.in' => 'Duplicate action must be one of: ignore, update.',
         ]);
 
         if ($validator->fails()) {
@@ -44,6 +47,7 @@ class ImportController extends Controller
             ], 422);
         }
 
+        $options = $request->input('options') ?? [];
         $records = $request->input('records');
         $path    = 'imports/' . Str::uuid() . '.json';
 
@@ -61,7 +65,7 @@ class ImportController extends Controller
                 'current_step'   => 'queued',
             ]);
 
-            ProcessImportJob::dispatch($batch->id, $path, $batch->type)
+            ProcessImportJob::dispatch($batch->id, $path, $batch->type, $options)
                 ->onQueue('imports');
 
             return response()->json([

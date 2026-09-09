@@ -36,15 +36,20 @@ class GenericImport
 
     private int $errorCount = 0;
 
+    private int $ignoredCount = 0;
+
     private array $fkCache = [];
 
     private array $trocas = [];
 
-    public function __construct(string $batchId, string $type, int $totalRows)
+    private array $options = [];
+
+    public function __construct(string $batchId, string $type, int $totalRows, array $options = [])
     {
         $this->batchId = $batchId;
         $this->type = $type;
         $this->totalRows = $totalRows;
+        $this->options = $options;
     }
 
     public function processRecords(array $records): void
@@ -74,6 +79,13 @@ class GenericImport
 
     private function importRow(array $data): void
     {
+        // Sem opção explícita, mantém a atualização usada pelos clientes e jobs antigos.
+        if (($this->options['duplicateAction'] ?? 'update') === 'ignore' && $this->isDuplicate($data)) {
+            $this->ignoredCount++;
+
+            return;
+        }
+
         match ($this->type) {
             'clientes' => $this->importCliente($data),
             'motoristas' => $this->importMotorista($data),
@@ -82,6 +94,41 @@ class GenericImport
             'vendas_trocas' => $this->importVendaTroca($data),
             default => throw new \RuntimeException("Tipo de importação desconhecido: {$this->type}"),
         };
+    }
+
+    private function isDuplicate(array $data): bool
+    {
+        return match ($this->type) {
+            'clientes' => Cliente::query()->where('codigo', Arr::get($data, 'cod_pdv'))->exists(),
+            'motoristas' => Motorista::query()->where('codigo', trim((string) Arr::get($data, 'codmotorista')))->exists(),
+            'produtos' => Produto::query()->where('codigo', trim((string) Arr::get($data, 'codigo')))->exists(),
+            'mapas' => Mapa::query()->where('codigo', trim((string) Arr::get($data, 'nro_do_mapa')))->exists(),
+            'vendas_trocas' => $this->isDuplicateVendaTroca($data),
+            default => false,
+        };
+    }
+
+    private function isDuplicateVendaTroca(array $data): bool
+    {
+        $numero = trim((string) Arr::get($data, 'nota_fiscal'));
+        $produto = trim((string) Arr::get($data, 'produto'));
+        $operacao = trim((string) Arr::get($data, 'operacao'));
+
+        $itens = ProdutoNotaFiscal::query()
+            ->whereHas('notaFiscal', fn ($query) => $query->where('numero', $numero))
+            ->whereHas('produto', fn ($query) => $query->where('codigo', $produto));
+
+        // Um produto novo na mesma nota continua sendo uma nova linha.
+        if (!in_array((int) $operacao, [5, 39], true)) {
+            return $itens->exists();
+        }
+
+        // A existência da entrada não torna a primeira troca uma duplicata.
+        return Troca::query()
+            ->whereIn('produto_nota_fiscal_id', $itens->select('id'))
+            ->where('operacao', $operacao)
+            ->where('data_operacao', $this->toDate(trim((string) Arr::get($data, 'dt_operacao'))))
+            ->exists();
     }
 
     // ─── Clientes ───────────────────────────────────────────────────────
@@ -607,6 +654,11 @@ class GenericImport
     public function getErrorCount(): int
     {
         return $this->errorCount;
+    }
+
+    public function getIgnoredCount(): int
+    {
+        return $this->ignoredCount;
     }
 
     public function getTrocas(): array
