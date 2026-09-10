@@ -19,6 +19,7 @@ class Troca extends Model
 
     protected $fillable = [
         'produto_nota_fiscal_id',
+        'usuario_responsavel_id',
         'quantidade',
         'operacao',
         'data_operacao',
@@ -29,5 +30,17 @@ class Troca extends Model
     public function produtoNotaFiscal()
     {
         return $this->belongsTo(ProdutoNotaFiscal::class, 'produto_nota_fiscal_id');
+    }
+
+    public function responsavel()
+    {
+        return $this->belongsTo(Usuario::class, 'usuario_responsavel_id');
+    }
+
+    public function itensAvaria()
+    {
+        return $this->belongsToMany(ItemAvaria::class, 'trocas_itens_avaria', 'troca_id', 'item_avaria_id')
+            ->withPivot('quantidade')
+            ->withTimestamps();
     }
 }

@@ -29,6 +29,7 @@ class Avaria extends Model
     ];
 
     protected $casts = [
+        'data_aprovacao' => 'datetime',
         'whatsapp_notification_sent_at' => 'datetime',
     ];
 

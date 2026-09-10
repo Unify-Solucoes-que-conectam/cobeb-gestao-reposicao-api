@@ -65,4 +65,11 @@ class ItemAvaria extends Model
     {
         return $this->belongsTo(TipoAvaria::class, 'tipo_avaria_id');
     }
+
+    public function trocas()
+    {
+        return $this->belongsToMany(Troca::class, 'trocas_itens_avaria', 'item_avaria_id', 'troca_id')
+            ->withPivot('quantidade')
+            ->withTimestamps();
+    }
 }
