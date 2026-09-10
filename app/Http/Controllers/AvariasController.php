@@ -62,7 +62,11 @@ class AvariasController extends Controller
                 'anexos',
                 'cliente',
                 'cliente.contatos',
-                'motorista.mapas',
+                'motorista.mapas' => fn ($query) => $query
+                    ->orderByDesc('data_entrega')
+                    ->orderByDesc('created_at'),
+                'motorista.mapas.filial',
+                'motorista.usuario',
                 'motorista.cluster',
                 'motorista.filial',
                 'aprovador',
