@@ -449,10 +449,6 @@ class AvariasController extends Controller
         ], ['phone.regex' => 'Informe um telefone válido com DDD.']);
 
         $avaria = Avaria::query()->with(['cliente', 'motorista.filial'])->findOrFail($id);
-        if (!in_array($avaria->status, ['aprovada', 'reprovada'], true)) {
-            return response()->json(['success' => false, 'message' => 'A avaria precisa estar aprovada ou reprovada.'], 422);
-        }
-
         $phone = preg_replace('/\D/', '', $data['phone']);
         if (str_starts_with($phone, '55') && strlen($phone) >= 12) {
             $phone = substr($phone, 2);

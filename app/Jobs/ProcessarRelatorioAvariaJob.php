@@ -26,7 +26,20 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
 
     protected string $filialId;
 
-    public function __construct($avarias, $cliente, $contatoCliente, $protocolo, string $filialId, $mensagem = null)
+    protected ?string $avariaId;
+
+    protected bool $isAvariaRetry;
+
+    public function __construct(
+        $avarias,
+        $cliente,
+        $contatoCliente,
+        $protocolo,
+        string $filialId,
+        $mensagem = null,
+        ?string $avariaId = null,
+        bool $isAvariaRetry = false,
+    )
     {
         $this->avarias = $avarias;
         $this->cliente = $cliente;
@@ -34,6 +47,8 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
         $this->protocolo = $protocolo;
         $this->mensagem = $mensagem;
         $this->filialId = $filialId;
+        $this->avariaId = $avariaId;
+        $this->isAvariaRetry = $isAvariaRetry;
     }
 
     public function handle(): void
@@ -80,6 +95,8 @@ class ProcessarRelatorioAvariaJob implements ShouldQueue
             basename($nomeArquivo),
             'import_report',
             [$this->cliente->nome, $this->protocolo],
+            $this->avariaId,
+            $this->isAvariaRetry,
         );
     }
 }

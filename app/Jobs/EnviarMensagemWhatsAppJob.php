@@ -81,6 +81,7 @@ class EnviarMensagemWhatsAppJob implements ShouldQueue
             if ($this->type === 'media' && $this->storagePath && $this->fileName) {
                 $service->sendMedia($this->filialId, $this->phone, $this->message, $this->storagePath, $this->fileName, $this->event ?? 'import_report', $this->variables);
                 Storage::delete($this->storagePath);
+                $this->markAvariaAsSent();
 
                 return;
             }
