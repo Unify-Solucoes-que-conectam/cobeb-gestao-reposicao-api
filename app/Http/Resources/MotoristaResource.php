@@ -26,9 +26,31 @@ class MotoristaResource extends JsonResource
 
         $esconderCampos = $request->routeIs(['auth.login']);
 
-        $mapa = ($this->relationLoaded('mapas') && !is_null($this->dataEntrega))
-            ? $this->mapas->firstWhere('data_entrega', $this->dataEntrega)
-            : null;
+        $mapa = null;
+
+        if ($this->relationLoaded('mapas') && $this->mapas->isNotEmpty()) {
+            $dataEntrega = $this->dataEntrega
+                ? substr((string) $this->dataEntrega, 0, 10)
+                : null;
+            $mapasOrdenados = $this->mapas->sortByDesc(
+                fn ($mapa) => substr((string) $mapa->data_entrega, 0, 10) . '|' . $mapa->created_at
+            );
+
+            if ($dataEntrega) {
+                $mapa = $mapasOrdenados->first(
+                    fn ($mapa) => substr((string) $mapa->data_entrega, 0, 10) === $dataEntrega
+                );
+
+                // Registros antigos podem não possuir um mapa exatamente no dia da avaria.
+                // Nesse caso, usa o último mapa conhecido até aquela data.
+                $mapa ??= $mapasOrdenados->first(
+                    fn ($mapa) => substr((string) $mapa->data_entrega, 0, 10) <= $dataEntrega
+                );
+            }
+
+            // Se não houver mapa anterior, ainda retorna o vínculo mais recente do motorista.
+            $mapa ??= $mapasOrdenados->first();
+        }
 
         return [
             'id' => $this->id,
