@@ -7,6 +7,8 @@ use App\Models\WhatsAppConfiguration;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class EvolutionClient
 {
@@ -175,8 +177,34 @@ class EvolutionClient
             return $response->json() ?? [];
         }
 
+        $responseBody = $response->json();
+        $providerMessage = data_get($responseBody, 'response.message')
+            ?? data_get($responseBody, 'message')
+            ?? data_get($responseBody, 'error');
+        $numberCheck = collect(data_get($responseBody, 'response.message', []))
+            ->first(fn ($item) => is_array($item) && array_key_exists('exists', $item));
+
+        if (is_array($numberCheck) && $numberCheck['exists'] === false) {
+            $number = (string) ($numberCheck['number'] ?? 'informado');
+            throw new EvolutionException(
+                "O número {$number} não foi encontrado no WhatsApp.",
+                'WHATSAPP_NUMBER_NOT_FOUND',
+                422,
+            );
+        }
+
+        Log::error('Evolution API recusou uma requisição.', [
+            'status' => $response->status(),
+            'reason' => is_scalar($providerMessage) ? (string) $providerMessage : null,
+            // A Evolution usa formatos diferentes de erro entre endpoints/versões.
+            // O corpo permite diagnosticar respostas 400 sem registrar cabeçalhos ou chaves da API.
+            'response_body' => Str::limit($response->body(), 2000),
+        ]);
+
         throw new EvolutionException(
-            $message,
+            $providerMessage && is_scalar($providerMessage)
+                ? $message . ' Motivo informado pelo provedor: ' . Str::limit((string) $providerMessage, 500)
+                : $message . " HTTP {$response->status()}.",
             $errorCode,
             $response->status() === 401 || $response->status() === 403 ? 422 : 502,
         );

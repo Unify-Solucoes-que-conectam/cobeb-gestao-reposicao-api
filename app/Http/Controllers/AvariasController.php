@@ -5,12 +5,13 @@ namespace App\Http\Controllers;
 use App\Events\GlobalEvent;
 use App\Http\Resources\AvariaResource;
 use App\Http\Resources\ItemAvariaResource;
-use App\Jobs\EnviarMensagemWhatsAppJob;
 use App\Jobs\ProcessarRelatorioAvariaJob;
 use App\Models\AnexosAvaria;
 use App\Models\Avaria;
+use App\Models\ClienteTelefones;
 use App\Models\ItemAvaria;
 use App\Models\ProdutoNotaFiscal;
+use App\Services\AvariaWhatsAppNotificationService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -382,94 +383,49 @@ class AvariasController extends Controller
                 );
             }
 
-            // armazena todos os números de telefone do cliente
-            $clientePhones = $avaria->cliente->contatos->pluck('numero')
-                ->filter() // Remove valores nulos ou vazios
-                ->unique() // Remove duplicados
-                ->toArray()
-            ;
-
-            // organiza os números de telefone do array onde os primeiros devem ser números de telefone no formato 3799xxxxxxx
-            usort($clientePhones, function ($a, $b) {
-                // Se ambos os números tiverem 11 dígitos, mantém a ordem
-                if (strlen($a) === 11 && strlen($b) === 11) {
-                    return 0;
-                }
-
-                // Se apenas $a tiver 11 dígitos, coloca $a antes de $b
-                if (strlen($a) === 11) {
-                    return -1;
-                }
-
-                // Se apenas $b tiver 11 dígitos, coloca $b antes de $a
-                if (strlen($b) === 11) {
-                    return 1;
-                }
-
-                // Se nenhum dos dois tiver 11 dígitos, mantém a ordem original
-                return 0;
-            });
-
-            /**
-             * mandar mensagem sempre para o primeiro número do array, que deve ser o número de telefone no formato 3799xxxxxxx
-             * se estiver em outro formato ou não tiver número marcar todos os números do cliente com isWhatsapp false e não enviar mensagem
-             */
-            $clientePhone = null;
-
-            foreach ($clientePhones as $phone) {
-                if (strlen($phone) === 11) {
-                    $clientePhone = $phone;
-
-                    break;
-                }
-                else {
-                    // marca o contato como não tendo WhatsApp
-                    $contato = $avaria->cliente->contatos()->where('numero', $phone)->first();
-
-                    if ($contato) {
-                        $contato->isWhatsapp = false;
-                        $contato->save();
-                    }
-                }
-            }
+            $clientePhone = $avaria->cliente->contatos
+                ->where('isWhatsapp', true)
+                ->pluck('numero')
+                ->map(fn ($phone) => preg_replace('/\D/', '', (string) $phone))
+                ->first(fn ($phone) => strlen($phone) === 11);
 
             // Se não encontrou nenhum número válido, retorna erro
             if (!$clientePhone) {
                 Log::warning("Nenhum número de telefone válido encontrado para o cliente {$avaria->cliente->razao_social} (ID: {$avaria->cliente->id}).");
 
+                $avaria->update([
+                    'whatsapp_notification_status' => 'failed',
+                    'whatsapp_notification_phone' => null,
+                    'whatsapp_notification_error' => 'O cliente não possui um número de WhatsApp válido. Informe um número com DDD para enviar a notificação.',
+                    'whatsapp_notification_sent_at' => null,
+                ]);
+
+                event(new GlobalEvent([
+                    'titulo' => "Falha no WhatsApp — Avaria #{$avaria->id}",
+                    'mensagem' => "O cliente da avaria #{$avaria->id} não possui um número de WhatsApp válido. Informe um número com DDD para enviar a notificação.",
+                    'tipo' => 'error',
+                    'link' => "/admin/avarias?avaria={$avaria->id}",
+                ]));
+
                 return response()->json([
-                    'success' => false,
-                    'message' => "Avaria atualizada para {$request->status}, mas nenhum número de telefone válido foi encontrado para enviar notificação via WhatsApp.",
+                    'success' => true,
+                    'message' => "Avaria atualizada para {$request->status}, mas o cliente ainda precisa de um número de WhatsApp válido.",
                     'error_code' => 'WHATSAPP_PHONENUMBER_NOTFOUND',
-                ], 500);
+                    'data' => new AvariaResource($avaria->fresh()),
+                ], 200);
             }
 
-            if ($clientePhone && in_array($request->status, ['aprovada', 'reprovada'])) {
-                $mensagem = $request->status === 'aprovada'
-                    ? "Prezado(a) *{$avaria->cliente->razao_social}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*AVR-{$avaria->id}* foi *aprovada* pela nossa equipe.\n\nO processo de substituição dos produtos avariados já está em andamento. Em caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*"
-                    : "Prezado(a) *{$avaria->cliente->razao_social}*,\n\nInformamos que a solicitação de troca referente ao protocolo #*AVR-{$avaria->id}* foi *reprovada* pela nossa equipe.\n\n*Motivo:* _{$avaria->motivo_reprovacao}_\n\nEm caso de dúvidas, por gentileza, entre em contato conosco.\n\nAtenciosamente,\n*{$avaria->motorista->filial->descricao}*";
-                $event = $request->status === 'aprovada' ? 'avaria_approved' : 'avaria_rejected';
-                $variables = $request->status === 'aprovada'
-                    ? [$avaria->cliente->razao_social, "AVR-{$avaria->id}", $avaria->motorista->filial->descricao]
-                    : [$avaria->cliente->razao_social, "AVR-{$avaria->id}", $avaria->motivo_reprovacao, $avaria->motorista->filial->descricao];
-
-                EnviarMensagemWhatsAppJob::dispatch(
-                    $avaria->motorista->filial_id,
-                    $clientePhone,
-                    'text',
-                    $mensagem,
-                    null,
-                    null,
-                    $event,
-                    $variables,
-                );
+            if ($clientePhone && in_array($request->status, ['aprovada', 'reprovada'], true)) {
+                app(AvariaWhatsAppNotificationService::class)->queue($avaria, $clientePhone);
             }
 
             return response()->json([
                 'success' => true,
-                'message' => "Avaria atualizada para {$request->status}, o cliente foi notificado via WhatsApp.",
+                'message' => in_array($request->status, ['aprovada', 'reprovada'], true)
+                    ? "Avaria atualizada para {$request->status}. A notificação do cliente foi enfileirada e será processada em segundo plano."
+                    : "Avaria atualizada para {$request->status}.",
                 'data' => $avaria,
-            ]);
+            ], 200);
         }
         catch (\Exception $e) {
             // Tratamento de erros gerais
@@ -479,6 +435,41 @@ class AvariasController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function retryWhatsApp(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'phone' => ['required', 'string', 'max:20', 'regex:/^\+?\d[\d\s().-]{9,19}$/'],
+        ], ['phone.regex' => 'Informe um telefone válido com DDD.']);
+
+        $avaria = Avaria::query()->with(['cliente', 'motorista.filial'])->findOrFail($id);
+        if (!in_array($avaria->status, ['aprovada', 'reprovada'], true)) {
+            return response()->json(['success' => false, 'message' => 'A avaria precisa estar aprovada ou reprovada.'], 422);
+        }
+
+        $phone = preg_replace('/\D/', '', $data['phone']);
+        if (str_starts_with($phone, '55') && strlen($phone) >= 12) {
+            $phone = substr($phone, 2);
+        }
+        if (strlen($phone) !== 11) {
+            return response()->json(['success' => false, 'message' => 'Informe 11 dígitos: DDD e número com o nono dígito.'], 422);
+        }
+
+        DB::transaction(function () use ($avaria, $phone) {
+            ClienteTelefones::query()->where('cliente_id', $avaria->cliente_id)->update(['isWhatsapp' => false]);
+            ClienteTelefones::query()->updateOrCreate(
+                ['cliente_id' => $avaria->cliente_id, 'numero' => $phone],
+                ['isWhatsapp' => true],
+            );
+            app(AvariaWhatsAppNotificationService::class)->queue($avaria, $phone, true);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Número atualizado. A notificação foi enfileirada novamente.',
+            'data' => new AvariaResource($avaria->fresh(['cliente', 'motorista.filial'])),
+        ], 202);
     }
 
     public function itens(Request $request, string $id)
