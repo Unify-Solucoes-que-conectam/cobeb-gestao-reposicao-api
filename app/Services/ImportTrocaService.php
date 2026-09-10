@@ -173,9 +173,13 @@ class ImportTrocaService
                 ]);
                 $trade->correcoes = $result['correcoes'] + 1;
             }
+            else {
+                $trade->usuario_responsavel_id = $userId;
+            }
             $trade->fill(['produto_nota_fiscal_id' => $snapshot['item']->id, 'operacao' => $result['operacao'],
                 'data_operacao' => $result['data'], 'quantidade' => $result['quantidade'], 'motivo_parcial' => $result['motivo_parcial'] ?: null]);
             $trade->save();
+            app(TrocaAvariaAllocationService::class)->rebuild($snapshot['item']->id);
             return $result + ['item' => $snapshot['item'], 'trade' => $trade];
         }, 3);
     }

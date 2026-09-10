@@ -25,6 +25,7 @@ class ItemAvariaResource extends JsonResource
                 'quantidade_total' => $this->produtoNotaFiscal->quantidade,
             ]),
             'quantidade_avariada' => $this->quantidade_avariada,
+            'trocas' => TrocaResource::collection($this->whenLoaded('trocas')),
         ];
     }
 }

@@ -74,6 +74,7 @@ class AvariasController extends Controller
                 'itens.produtoNotaFiscal.produto',
                 'itens.produtoNotaFiscal.notaFiscal',
                 'itens.tipoAvaria',
+                'itens.trocas.responsavel',
             ])->where('status', '!=', 'pendente')->get();
 
             return response()->json([
@@ -484,6 +485,7 @@ class AvariasController extends Controller
                 'itens.produtoNotaFiscal',
                 'itens.produtoNotaFiscal.produto',
                 'itens.tipoAvaria',
+                'itens.trocas.responsavel',
             ])->findOrFail($id);
 
             return response()->json([
