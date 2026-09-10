@@ -21,7 +21,15 @@ class Avaria extends Model
         'data_emissao',
         'aprovador_id',
         'data_aprovacao',
-        'motivo_reprovacao'
+        'motivo_reprovacao',
+        'whatsapp_notification_status',
+        'whatsapp_notification_phone',
+        'whatsapp_notification_error',
+        'whatsapp_notification_sent_at',
+    ];
+
+    protected $casts = [
+        'whatsapp_notification_sent_at' => 'datetime',
     ];
 
     // --- Validation Rules ---

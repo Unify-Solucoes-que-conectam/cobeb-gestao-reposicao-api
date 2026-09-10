@@ -7,6 +7,7 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Str;
 
 class GlobalEvent implements ShouldBroadcast
 {
@@ -14,9 +15,12 @@ class GlobalEvent implements ShouldBroadcast
 
     public array $data;
 
+    private string $notificationId = '';
+
     public function __construct(array $data)
     {
         $this->data = $data;
+        $this->notificationId = (string) ($data['id'] ?? Str::uuid());
     }
 
     public function broadcastOn(): Channel
@@ -32,6 +36,7 @@ class GlobalEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'id' => $this->notificationId !== '' ? $this->notificationId : (string) Str::uuid(),
             'titulo' => $this->data['titulo'] ?? null,
             'mensagem' => $this->data['mensagem'],
             'tipo' => $this->data['tipo'],

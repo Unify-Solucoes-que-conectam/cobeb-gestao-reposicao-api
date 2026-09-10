@@ -5,6 +5,10 @@ namespace App\Jobs;
 use App\Exceptions\WhatsAppNotConfiguredException;
 use App\Jobs\Middleware\SpaceWhatsAppMessages;
 use App\Models\WhatsAppConfiguration;
+use App\Models\Avaria;
+use App\Models\ClienteTelefones;
+use App\Exceptions\EvolutionException;
+use App\Events\GlobalEvent;
 use App\Support\WhatsAppService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -23,6 +27,10 @@ class EnviarMensagemWhatsAppJob implements ShouldQueue
 
     public array $backoff = [30, 60, 120];
 
+    private ?string $avariaId = null;
+
+    private bool $isAvariaRetry = false;
+
     public function __construct(
         private string $filialId,
         private string $phone,
@@ -32,7 +40,11 @@ class EnviarMensagemWhatsAppJob implements ShouldQueue
         private ?string $fileName = null,
         private ?string $event = null,
         private array $variables = [],
+        ?string $avariaId = null,
+        bool $isAvariaRetry = false,
     ) {
+        $this->avariaId = $avariaId;
+        $this->isAvariaRetry = $isAvariaRetry;
         $this->onQueue('whatsapp');
     }
 
@@ -61,6 +73,8 @@ class EnviarMensagemWhatsAppJob implements ShouldQueue
             if ($this->type === 'text') {
                 $service->sendMessage($this->filialId, $this->phone, $this->message, $this->event, $this->variables);
 
+                $this->markAvariaAsSent();
+
                 return;
             }
 
@@ -72,6 +86,15 @@ class EnviarMensagemWhatsAppJob implements ShouldQueue
             }
 
             throw new \InvalidArgumentException('Tipo de mensagem WhatsApp inválido.');
+        }
+        catch (EvolutionException $exception) {
+            if ($exception->errorCode === 'WHATSAPP_NUMBER_NOT_FOUND') {
+                $this->fail($exception);
+
+                return;
+            }
+
+            throw $exception;
         }
         catch (WhatsAppNotConfiguredException $exception) {
             Log::warning('Envio WhatsApp não executado por configuração da filial.', [
@@ -93,5 +116,61 @@ class EnviarMensagemWhatsAppJob implements ShouldQueue
             'type' => $this->type,
             'error' => $exception->getMessage(),
         ]);
+
+        if (!$this->avariaId) {
+            return;
+        }
+
+        $avaria = Avaria::query()->find($this->avariaId);
+        if (!$avaria) {
+            return;
+        }
+
+        $numberNotFound = $exception instanceof EvolutionException
+            && $exception->errorCode === 'WHATSAPP_NUMBER_NOT_FOUND';
+        $message = $numberNotFound
+            ? 'O número informado não foi encontrado no WhatsApp. Informe um número válido e reenvie a notificação.'
+            : 'Não foi possível enviar a notificação pelo WhatsApp. Confira o número e tente novamente.';
+
+        $avaria->update([
+            'whatsapp_notification_status' => 'failed',
+            'whatsapp_notification_error' => $message,
+        ]);
+
+        if ($numberNotFound) {
+            ClienteTelefones::query()
+                ->where('cliente_id', $avaria->cliente_id)
+                ->where('numero', preg_replace('/\D/', '', $this->phone))
+                ->update(['isWhatsapp' => false]);
+        }
+
+        event(new GlobalEvent([
+            'titulo' => "Falha no WhatsApp — Avaria #{$avaria->id}",
+            'mensagem' => "Não foi possível notificar o cliente da avaria #{$avaria->id}. {$message}",
+            'tipo' => 'error',
+            'link' => "/admin/avarias?avaria={$avaria->id}",
+        ]));
+    }
+
+    private function markAvariaAsSent(): void
+    {
+        if (!$this->avariaId) {
+            return;
+        }
+
+        Avaria::query()->whereKey($this->avariaId)->update([
+            'whatsapp_notification_status' => 'sent',
+            'whatsapp_notification_error' => null,
+            'whatsapp_notification_sent_at' => now(),
+        ]);
+
+        if ($this->isAvariaRetry) {
+            event(new GlobalEvent([
+                'titulo' => "WhatsApp reenviado — Avaria #{$this->avariaId}",
+                'mensagem' => "O reenvio da notificação da avaria #{$this->avariaId} para o novo número foi concluído com sucesso.",
+                'tipo' => 'success',
+                'link' => "/admin/avarias?avaria={$this->avariaId}",
+            ]));
+        }
     }
 }
