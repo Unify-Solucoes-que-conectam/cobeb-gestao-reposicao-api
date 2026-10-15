@@ -149,26 +149,46 @@ class AvariasController extends Controller
 
                     // 4. Processa os itens desta Nota Fiscal
                     foreach ($produtosDaNota as $prodReq) {
-                        // Verifica se já existe o MESMO PRODUTO com o MESMO TIPO DE AVARIA
-                        $itemExistente = $avaria->itens()
-                            ->where('produto_nota_fiscal_id', $prodReq['produto_id'])
-                            ->where('tipo_avaria_id', $prodReq['tipo_avaria_id'])
-                            ->first()
-                        ;
+                        $referencia = ProdutoNotaFiscal::lockForUpdate()->findOrFail($prodReq['produto_id']);
+                        $componentes = ProdutoNotaFiscal::where('nota_fiscal_id', $referencia->nota_fiscal_id)
+                            ->where('produto_id', $referencia->produto_id)
+                            ->orderBy('created_at')->orderBy('id')->lockForUpdate()->get();
+                        $componentIds = $componentes->pluck('id');
 
-                        if ($itemExistente) {
-                            // Se existir, APENAS ATUALIZA (Estou somando a quantidade nova com a que já existia)
-                            // Obs: Se a regra for sobrescrever em vez de somar, troque += por =
-                            $itemExistente->quantidade_avariada += $prodReq['quantidade'];
-                            $itemExistente->save();
+                        // Mantém a mesma janela de disponibilidade já usada na consulta
+                        // de notas, mas aplica o limite ao conjunto inteiro do combo.
+                        $consumido = ItemAvaria::whereIn('produto_nota_fiscal_id', $componentIds)
+                            ->whereHas('avaria', fn ($query) => $query
+                                ->where('cliente_id', $validated['cliente_id'])
+                                ->whereDate('created_at', now()->toDateString()))
+                            ->selectRaw('produto_nota_fiscal_id, SUM(quantidade_avariada) as total')
+                            ->groupBy('produto_nota_fiscal_id')->pluck('total', 'produto_nota_fiscal_id');
+                        $disponivel = (int) $componentes->sum(fn ($item) => max(0, (int) $item->quantidade - (int) ($consumido[$item->id] ?? 0)));
+                        if ((int) $prodReq['quantidade'] > $disponivel) {
+                            throw new \RuntimeException("Quantidade avariada maior que o saldo disponível do produto na nota ({$disponivel}).");
                         }
-                        else {
-                            // Se for tipo diferente, ou um produto novo, CRIA UM NOVO ITEM
-                            $avaria->itens()->create([
-                                'produto_nota_fiscal_id' => $prodReq['produto_id'],
-                                'tipo_avaria_id' => $prodReq['tipo_avaria_id'],
-                                'quantidade_avariada' => $prodReq['quantidade'],
-                            ]);
+
+                        $restante = (int) $prodReq['quantidade'];
+                        foreach ($componentes as $componente) {
+                            if ($restante <= 0) break;
+                            $capacidade = max(0, (int) $componente->quantidade - (int) ($consumido[$componente->id] ?? 0));
+                            $quantidade = min($restante, $capacidade);
+                            if ($quantidade <= 0) continue;
+
+                            $itemExistente = $avaria->itens()
+                                ->where('produto_nota_fiscal_id', $componente->id)
+                                ->where('tipo_avaria_id', $prodReq['tipo_avaria_id'])->first();
+                            if ($itemExistente) {
+                                $itemExistente->quantidade_avariada += $quantidade;
+                                $itemExistente->save();
+                            } else {
+                                $avaria->itens()->create([
+                                    'produto_nota_fiscal_id' => $componente->id,
+                                    'tipo_avaria_id' => $prodReq['tipo_avaria_id'],
+                                    'quantidade_avariada' => $quantidade,
+                                ]);
+                            }
+                            $restante -= $quantidade;
                         }
                     }
 

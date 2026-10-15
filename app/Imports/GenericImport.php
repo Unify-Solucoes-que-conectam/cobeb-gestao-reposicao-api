@@ -443,17 +443,11 @@ class GenericImport
             if (!preg_match('/^\d+$/', $raw) || (float) $raw < 1 || (float) $raw > 2147483647) throw new \RuntimeException('Quantidade de entrada deve ser inteira e positiva.');
             $nota = NotaFiscal::where('numero', $numero)->lockForUpdate()->first();
             if ($nota && $nota->cliente_id !== $clienteId) throw new \RuntimeException('A nota já pertence a outro cliente.');
-            $item = $nota ? ProdutoNotaFiscal::where('nota_fiscal_id', $nota->id)->where('produto_id', $produtoId)->lockForUpdate()->first() : null;
-            if ($item && ($this->options['duplicateAction'] ?? 'ignore') === 'ignore') {
-                $this->ignoredCount++;
-                return;
-            }
-            if ($item && (int) $raw < (int) Troca::where('produto_nota_fiscal_id', $item->id)->lockForUpdate()->get()->sum('quantidade')) {
-                throw new \RuntimeException('A entrada não pode ser reduzida abaixo das trocas já registradas.');
-            }
             $nota ??= new NotaFiscal(['numero' => $numero, 'cliente_id' => $clienteId]);
             $nota->fill(['pedido' => trim((string) ($data['nr_pedido'] ?? '')), 'data_emissao' => $this->toDate($data['emissao'] ?? '')])->save();
-            $item ??= new ProdutoNotaFiscal(['nota_fiscal_id' => $nota->id, 'produto_id' => $produtoId]);
+            // Cada linha é um componente independente da nota, inclusive quando
+            // possui o mesmo produto de uma linha anterior (combos promocionais).
+            $item = new ProdutoNotaFiscal(['nota_fiscal_id' => $nota->id, 'produto_id' => $produtoId]);
             $item->fill(['quantidade' => (int) $raw, 'operacao' => '1', 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
                 'valor_desconto' => $this->toDecimal($data['desconto'] ?? ''), 'valor_adicional' => $this->toDecimal($data['adic_fina'] ?? ''),
                 'valor_total' => $this->toDecimal($data['total'] ?? '')])->save();

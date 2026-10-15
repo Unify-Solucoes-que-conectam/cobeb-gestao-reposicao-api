@@ -9,9 +9,7 @@ use App\Models\NotaFiscal;
 use App\Models\ProdutoNotaFiscal;
 use App\Models\Troca;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class ImportTrocaService
 {
@@ -62,33 +60,30 @@ class ImportTrocaService
         }
         $query = ProdutoNotaFiscal::where('nota_fiscal_id', $note->id)
             ->whereHas('produto', fn ($q) => $q->where('codigo', trim((string) ($row['produto'] ?? ''))));
-        $item = ($lock ? $query->lockForUpdate() : $query)->first();
-        if (!$item) throw new \RuntimeException('O produto não pertence à nota fiscal informada.');
-        if ((int) $item->operacao !== 1) {
+        $items = ($lock ? $query->lockForUpdate() : $query)->orderBy('created_at')->orderBy('id')->get();
+        if ($items->isEmpty()) throw new \RuntimeException('O produto não pertence à nota fiscal informada.');
+        if ($items->contains(fn ($item) => (int) $item->operacao !== 1)) {
             throw new \RuntimeException('O item da nota não é uma entrada (operação 1). Confira a entrada original antes de registrar a troca.');
         }
+        $item = $items->first();
+        $itemIds = $items->pluck('id');
         $damages = Avaria::where('cliente_id', $client->id)->whereIn('status', ['aprovada', 'trocada'])
-            ->whereHas('itens', fn ($q) => $q->where('produto_nota_fiscal_id', $item->id))->orderBy('id');
+            ->whereHas('itens', fn ($q) => $q->whereIn('produto_nota_fiscal_id', $itemIds))->orderBy('id');
         $damageIds = ($lock ? $damages->lockForUpdate() : $damages)->pluck('id');
-        $damageItems = ItemAvaria::whereIn('avaria_id', $damageIds)->where('produto_nota_fiscal_id', $item->id)->orderBy('id');
-        $trades = Troca::where('produto_nota_fiscal_id', $item->id)->orderBy('id');
+        $damageItems = ItemAvaria::whereIn('avaria_id', $damageIds)->whereIn('produto_nota_fiscal_id', $itemIds)->orderBy('id');
+        $trades = Troca::whereIn('produto_nota_fiscal_id', $itemIds)->orderBy('id');
         // Leituras bloqueadas também precisam enxergar commits feitos enquanto aguardávamos o bloqueio.
         $approved = (int) ($lock ? $damageItems->lockForUpdate() : $damageItems)->get()->sum('quantidade_avariada');
-        return ['item' => $item, 'approved' => $approved, 'trades' => ($lock ? $trades->lockForUpdate() : $trades)->get()];
+        return ['item' => $item, 'items' => $items, 'approved' => $approved,
+            'quantity' => (int) $items->sum('quantidade'), 'trades' => ($lock ? $trades->lockForUpdate() : $trades)->get()];
     }
 
     private function decision(array $row, array $options, array $snapshot, int $delta = 0): array
     {
         $date = $this->date((string) ($row['dt_operacao'] ?? ''));
         $operation = trim((string) $row['operacao']);
-        $matches = $snapshot['trades']->filter(fn ($t) => $t->operacao === $operation && (string) $t->data_operacao === $date);
-        if ($matches->count() > 1) throw new \RuntimeException('Há trocas históricas duplicadas para este movimento. Concilie os registros antes de continuar.');
-        $existing = $matches->first();
-        $base = ['troca_id' => $existing?->id, 'correcoes' => (int) ($existing?->correcoes ?? 0), 'data' => $date,
+        $base = ['troca_id' => null, 'correcoes' => 0, 'data' => $date,
             'item_id' => $snapshot['item']->id, 'operacao' => $operation];
-        if ($existing && ($options['duplicateAction'] ?? 'ignore') === 'ignore') {
-            return $base + ['status' => 'ignored', 'message' => 'Troca existente: será ignorada sem nova mensagem.'];
-        }
         $raw = trim((string) ($row['quantidade'] ?? ''));
         if (!preg_match('/^\d+$/', $raw) || (float) $raw < 1 || (float) $raw > 2147483647) {
             throw new \RuntimeException('A quantidade deve ser um número inteiro positivo.');
@@ -96,15 +91,12 @@ class ImportTrocaService
         $quantity = (int) $raw;
         $reason = trim((string) ($row['motivo_parcial'] ?? ''));
         if (mb_strlen($reason) > 1000) throw new \RuntimeException('O motivo deve ter no máximo 1000 caracteres.');
-        if ($existing && (int) $existing->quantidade === $quantity && trim((string) $existing->motivo_parcial) === $reason) {
-            return $base + ['status' => 'ignored', 'message' => 'Dados idênticos: nenhuma correção ou nova mensagem.'];
-        }
-        $other = (int) $snapshot['trades']->sum('quantidade') - (int) ($existing?->quantidade ?? 0) + $delta;
-        $available = max(0, (int) $snapshot['item']->quantidade - $other);
+        $other = (int) $snapshot['trades']->sum('quantidade') + $delta;
+        $available = max(0, $snapshot['quantity'] - $other);
         $approved = max(0, $snapshot['approved'] - $other);
-        $result = $base + ['status' => 'valid', 'message' => $existing ? 'A troca será corrigida e o cliente receberá um novo aviso.' : 'Nova troca.',
+        $result = $base + ['status' => 'valid', 'message' => 'Nova troca.',
             'disponivel' => $available, 'aprovada' => $approved, 'quantidade' => $quantity, 'motivo_parcial' => $reason,
-            'parcial' => $quantity < $approved, 'delta' => $quantity - (int) ($existing?->quantidade ?? 0)];
+            'parcial' => $quantity < $approved, 'delta' => $quantity];
         if ($quantity > $available) {
             return array_merge($result, ['status' => 'error', 'message' => "Quantidade solicitada ({$quantity}) maior que a disponível na nota ({$available})."]);
         }
@@ -114,34 +106,18 @@ class ImportTrocaService
         if ($quantity < $approved && $reason === '') {
             return array_merge($result, ['status' => 'error', 'message' => "Há {$approved} unidades aprovadas e serão enviadas {$quantity}. Informe o motivo do envio parcial; ele será mostrado ao cliente."]);
         }
-        if ($existing && $result['correcoes'] >= 2) {
-            // A confirmação só vale para esta versão, quantidade e justificativa.
-            $scope = [$existing->id, $result['correcoes'], (int) $existing->quantidade, (string) $existing->motivo_parcial, $quantity, $reason];
-            $confirmed = false;
-            try {
-                $confirmed = json_decode(Crypt::decryptString((string) ($row['confirmacao_correcao'] ?? '')), true) === $scope;
-            } catch (\Throwable $e) {
-            }
-            if (!$confirmed) {
-                return array_merge($result, ['status' => 'confirmation', 'message' => "Esta troca já foi corrigida {$result['correcoes']} vezes. Deseja corrigir novamente? Um novo WhatsApp será enviado e poderá gerar custo.",
-                    'confirmation_token' => Crypt::encryptString(json_encode($scope))]);
-            }
-        }
         return $result;
     }
 
     public function preview(array $records, array $options): array
     {
-        $results = $cache = $deltas = $seen = [];
+        $results = $cache = $deltas = [];
         foreach ($records as $index => $row) {
             if (!self::isTroca($row)) continue;
             $result = ['row_index' => $index];
             try {
                 $key = json_encode([$row['cliente'] ?? '', $row['nota_fiscal'] ?? '', $row['produto'] ?? '']);
                 $snapshot = $cache[$key] ??= $this->snapshot($row, false);
-                $movement = json_encode([$snapshot['item']->id, $row['operacao'], $this->date((string) ($row['dt_operacao'] ?? ''))]);
-                if (isset($seen[$movement])) throw new \RuntimeException('Movimento repetido no arquivo. Corrija ou desmarque a repetição.');
-                $seen[$movement] = true;
                 $decision = $this->decision($row, $options, $snapshot, $deltas[$snapshot['item']->id] ?? 0);
                 $result += $decision;
                 if (in_array($decision['status'], ['valid', 'confirmation'], true)) {
@@ -162,20 +138,8 @@ class ImportTrocaService
             $result = $this->decision($row, $options, $snapshot);
             if ($result['status'] === 'ignored') return $result;
             if ($result['status'] !== 'valid') throw new \RuntimeException($result['message']);
-            $trade = $result['troca_id'] ? $snapshot['trades']->firstWhere('id', $result['troca_id']) : new Troca();
-            if ($trade->exists) {
-                DB::table('troca_correcoes')->insert([
-                    'id' => (string) Str::uuid(), 'troca_id' => $trade->id, 'numero' => $result['correcoes'] + 1,
-                    'quantidade_anterior' => $trade->quantidade, 'quantidade_nova' => $result['quantidade'],
-                    'motivo_anterior' => $trade->motivo_parcial, 'motivo_novo' => $result['motivo_parcial'],
-                    'confirmacao_extra' => $result['correcoes'] >= 2, 'usuario_id' => $userId,
-                    'created_at' => now(), 'updated_at' => now(),
-                ]);
-                $trade->correcoes = $result['correcoes'] + 1;
-            }
-            else {
-                $trade->usuario_responsavel_id = $userId;
-            }
+            $trade = new Troca();
+            $trade->usuario_responsavel_id = $userId;
             $trade->fill(['produto_nota_fiscal_id' => $snapshot['item']->id, 'operacao' => $result['operacao'],
                 'data_operacao' => $result['data'], 'quantidade' => $result['quantidade'], 'motivo_parcial' => $result['motivo_parcial'] ?: null]);
             $trade->save();
