@@ -125,6 +125,22 @@ class ClientesController extends Controller
                 }
             }
 
+            // Uma nota pode ter o mesmo produto em mais de uma linha (combo).
+            // A operação móvel trabalha com o saldo lógico do produto, mantendo o
+            // primeiro item como referência para o endpoint de cadastro.
+            foreach ($notasFiscais as $notaFiscal) {
+                $produtosAgrupados = $notaFiscal->produtos->groupBy('produto_id')->map(function ($itens) {
+                    $referencia = $itens->first();
+                    $referencia->quantidade = (int) $itens->sum('quantidade');
+                    $referencia->valor_total = $itens->sum('valor_total');
+                    $referencia->valor_desconto = $itens->sum('valor_desconto');
+                    $referencia->valor_adicional = $itens->sum('valor_adicional');
+                    $referencia->quantidade_avariada = (int) $itens->sum(fn ($item) => $item->quantidade_avariada ?? 0);
+                    return $referencia;
+                })->values();
+                $notaFiscal->setRelation('produtos', $produtosAgrupados);
+            }
+
             // Retorna a coleção filtrada
             return response()->json([
                 'success' => true,

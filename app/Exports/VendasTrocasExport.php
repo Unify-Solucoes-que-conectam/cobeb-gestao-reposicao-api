@@ -108,12 +108,12 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
                 foreach ($produtos as $index => $codigo) {
                     $write($lists, 'B' . ($index + 1), $codigo);
                 }
-                foreach (['1', '5', '39'] as $index => $codigo) {
+                foreach (['1', '2', '5', '39'] as $index => $codigo) {
                     $write($lists, 'C' . ($index + 1), $codigo);
                 }
                 $name('ListaClientes', $lists, '$A$1:$A$' . max(1, $clientes->count()));
                 $name('ListaProdutos', $lists, '$B$1:$B$' . max(1, $produtos->count()));
-                $name('ListaOperacoes', $lists, '$C$1:$C$3');
+                $name('ListaOperacoes', $lists, '$C$1:$C$4');
                 $name('ListaVazia', $lists, '$D$1');
 
                 // Listas verticais: não há uma coluna por cliente/nota nem limite de 16 mil grupos.
@@ -180,16 +180,16 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
                     return $rule;
                 };
                 $mainSheet->setDataValidation('A2:A10000', $validation('ListaClientes', 'Selecione o cliente. Ao alterá-lo, selecione novamente a nota e o produto.'));
-                $mainSheet->setDataValidation('B2:B10000', $validation('ListaOperacoes', '1: entrada; 5 e 39: troca.'));
+                $mainSheet->setDataValidation('B2:B10000', $validation('ListaOperacoes', '1: entrada; 2: bonificação; 5 e 39: troca.'));
                 // Referências de linha relativas acompanham cada linha, inclusive ao colar/copiar.
                 $mainSheet->setDataValidation('E2:E10000', $validation(
                     'INDIRECT(IFERROR(VLOOKUP($A2&"",MapaNotas,2,FALSE),"ListaVazia"))',
-                    'Selecione uma nota do cliente. Para entrada (operação 1), pode digitar uma nota nova. Ao alterar a nota, selecione novamente o produto.',
+                    'Selecione uma nota do cliente. Para entrada ou bonificação (operação 1 ou 2), pode digitar uma nota nova. Ao alterar a nota, selecione novamente o produto.',
                     false
                 ));
                 $mainSheet->setDataValidation('F2:F10000', $validation(
-                    'INDIRECT(IF($B2&""="1","ListaProdutos",IFERROR(VLOOKUP($A2&"|"&$E2,MapaProdutos,2,FALSE),"ListaVazia")))',
-                    'Troca: selecione cliente e nota para listar seus produtos. Entrada: selecione um produto cadastrado.'
+                    'INDIRECT(IF(OR($B2&""="1",$B2&""="2"),"ListaProdutos",IFERROR(VLOOKUP($A2&"|"&$E2,MapaProdutos,2,FALSE),"ListaVazia")))',
+                    'Troca: selecione cliente e nota para listar seus produtos. Entrada ou bonificação: selecione um produto cadastrado.'
                 ));
             },
         ];

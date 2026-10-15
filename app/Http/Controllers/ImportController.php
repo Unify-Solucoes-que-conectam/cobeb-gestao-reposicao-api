@@ -53,7 +53,7 @@ class ImportController extends Controller
         $records = $request->input('records');
         $options = $request->input('options') ?? [];
         if ($request->input('type') === 'vendas_trocas') {
-            $results = app(ImportTrocaService::class)->preview($records, $options);
+            $results = app(ImportTrocaService::class)->validateRecords($records, $options);
             if (collect($results)->contains(fn ($row) => in_array($row['status'], ['error', 'confirmation'], true))) {
                 return response()->json(['success' => false, 'message' => 'Revise as trocas antes de importar.', 'data' => $results], 422);
             }
@@ -108,7 +108,7 @@ class ImportController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => app(ImportTrocaService::class)->preview($records, $options)
+            'data' => app(ImportTrocaService::class)->validateRecords($records, $options)
         ]);
     }
 

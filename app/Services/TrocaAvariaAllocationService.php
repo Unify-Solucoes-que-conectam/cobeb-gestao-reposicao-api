@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ProdutoNotaFiscal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -9,8 +10,12 @@ class TrocaAvariaAllocationService
 {
     public function rebuild(string $produtoNotaFiscalId): void
     {
+        $anchor = ProdutoNotaFiscal::findOrFail($produtoNotaFiscalId);
+        $itemIds = ProdutoNotaFiscal::where('nota_fiscal_id', $anchor->nota_fiscal_id)
+            ->where('produto_id', $anchor->produto_id)
+            ->orderBy('created_at')->orderBy('id')->pluck('id');
         $trocas = DB::table('trocas')
-            ->where('produto_nota_fiscal_id', $produtoNotaFiscalId)
+            ->whereIn('produto_nota_fiscal_id', $itemIds)
             ->orderBy('data_operacao')
             ->orderBy('created_at')
             ->orderBy('id')
@@ -24,7 +29,7 @@ class TrocaAvariaAllocationService
 
         $itens = DB::table('itens_avaria')
             ->join('avarias', 'avarias.id', '=', 'itens_avaria.avaria_id')
-            ->where('itens_avaria.produto_nota_fiscal_id', $produtoNotaFiscalId)
+            ->whereIn('itens_avaria.produto_nota_fiscal_id', $itemIds)
             ->whereIn('avarias.status', ['aprovada', 'trocada'])
             ->orderByRaw('COALESCE(avarias.data_aprovacao, avarias.data_emissao)')
             ->orderBy('avarias.created_at')
