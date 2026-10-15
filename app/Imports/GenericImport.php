@@ -433,8 +433,9 @@ class GenericImport
 
     private function importEntrada(array $data): void
     {
-        if (trim((string) ($data['operacao'] ?? '')) !== '1') throw new \RuntimeException('Operação inválida. Use 1, 5 ou 39.');
-        DB::transaction(function () use ($data) {
+        $operacao = trim((string) ($data['operacao'] ?? ''));
+        if (!in_array($operacao, ['1', '2'], true)) throw new \RuntimeException('Operação inválida. Use 1, 2, 5 ou 39.');
+        DB::transaction(function () use ($data, $operacao) {
             $numero = trim((string) ($data['nota_fiscal'] ?? ''));
             $clienteId = $this->resolveFk(Cliente::class, 'codigo', trim((string) ($data['cliente'] ?? '')));
             $produtoId = $this->resolveFk(Produto::class, 'codigo', trim((string) ($data['produto'] ?? '')));
@@ -448,7 +449,7 @@ class GenericImport
             // Cada linha é um componente independente da nota, inclusive quando
             // possui o mesmo produto de uma linha anterior (combos promocionais).
             $item = new ProdutoNotaFiscal(['nota_fiscal_id' => $nota->id, 'produto_id' => $produtoId]);
-            $item->fill(['quantidade' => (int) $raw, 'operacao' => '1', 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
+            $item->fill(['quantidade' => (int) $raw, 'operacao' => $operacao, 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
                 'valor_desconto' => $this->toDecimal($data['desconto'] ?? ''), 'valor_adicional' => $this->toDecimal($data['adic_fina'] ?? ''),
                 'valor_total' => $this->toDecimal($data['total'] ?? '')])->save();
         }, 3);

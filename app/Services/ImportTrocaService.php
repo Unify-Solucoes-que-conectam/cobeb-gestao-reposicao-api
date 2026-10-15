@@ -7,6 +7,7 @@ use App\Models\Cliente;
 use App\Models\ItemAvaria;
 use App\Models\NotaFiscal;
 use App\Models\ProdutoNotaFiscal;
+use App\Models\Produto;
 use App\Models\Troca;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -62,8 +63,8 @@ class ImportTrocaService
             ->whereHas('produto', fn ($q) => $q->where('codigo', trim((string) ($row['produto'] ?? ''))));
         $items = ($lock ? $query->lockForUpdate() : $query)->orderBy('created_at')->orderBy('id')->get();
         if ($items->isEmpty()) throw new \RuntimeException('O produto não pertence à nota fiscal informada.');
-        if ($items->contains(fn ($item) => (int) $item->operacao !== 1)) {
-            throw new \RuntimeException('O item da nota não é uma entrada (operação 1). Confira a entrada original antes de registrar a troca.');
+        if ($items->contains(fn ($item) => !in_array((string) $item->operacao, ['1', '2'], true))) {
+            throw new \RuntimeException('O item da nota não é uma entrada ou bonificação (operação 1 ou 2). Confira a origem antes de registrar a troca.');
         }
         $item = $items->first();
         $itemIds = $items->pluck('id');
@@ -122,6 +123,53 @@ class ImportTrocaService
                 $result += $decision;
                 if (in_array($decision['status'], ['valid', 'confirmation'], true)) {
                     $deltas[$snapshot['item']->id] = ($deltas[$snapshot['item']->id] ?? 0) + $decision['delta'];
+                }
+            } catch (\RuntimeException $e) {
+                $result += ['status' => 'error', 'message' => $e->getMessage()];
+            }
+            $results[] = $result;
+        }
+        return $results;
+    }
+
+    /** Valida todas as linhas da rotina antes de a importação ser enfileirada. */
+    public function validateRecords(array $records, array $options): array
+    {
+        $results = $cache = $deltas = [];
+        foreach ($records as $index => $row) {
+            $result = ['row_index' => $index];
+            try {
+                $operation = trim((string) ($row['operacao'] ?? ''));
+                if (!in_array($operation, ['1', '2', '5', '39'], true)) {
+                    throw new \RuntimeException('Operação inválida. Use 1, 2, 5 ou 39.');
+                }
+                $clientCode = trim((string) ($row['cliente'] ?? ''));
+                $productCode = trim((string) ($row['produto'] ?? ''));
+                if (!Cliente::where('codigo', $clientCode)->exists()) {
+                    throw new \RuntimeException('Cliente não encontrado.');
+                }
+                if (!Produto::where('codigo', $productCode)->exists()) {
+                    throw new \RuntimeException('Produto não encontrado.');
+                }
+                if (trim((string) ($row['nota_fiscal'] ?? '')) === '') {
+                    throw new \RuntimeException('Informe uma nota fiscal válida.');
+                }
+                $raw = trim((string) ($row['quantidade'] ?? ''));
+                if (!preg_match('/^\d+$/', $raw) || (int) $raw < 1) {
+                    throw new \RuntimeException('A quantidade deve ser um número inteiro positivo.');
+                }
+                $this->date((string) ($row['dt_operacao'] ?? ''));
+
+                if (!self::isTroca($row)) {
+                    $result += ['status' => 'valid', 'message' => 'Entrada válida.'];
+                } else {
+                    $key = json_encode([$clientCode, $row['nota_fiscal'], $productCode]);
+                    $snapshot = $cache[$key] ??= $this->snapshot($row, false);
+                    $decision = $this->decision($row, $options, $snapshot, $deltas[$snapshot['item']->id] ?? 0);
+                    $result += $decision;
+                    if ($decision['status'] === 'valid') {
+                        $deltas[$snapshot['item']->id] = ($deltas[$snapshot['item']->id] ?? 0) + $decision['delta'];
+                    }
                 }
             } catch (\RuntimeException $e) {
                 $result += ['status' => 'error', 'message' => $e->getMessage()];
