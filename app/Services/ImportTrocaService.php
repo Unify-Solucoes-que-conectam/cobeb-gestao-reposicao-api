@@ -133,9 +133,11 @@ class ImportTrocaService
     }
 
     /** Valida todas as linhas da rotina antes de a importação ser enfileirada. */
-    public function validateRecords(array $records, array $options): array
+    public function validateRecords(array $records, array $options, array &$deltas = []): array
     {
-        $results = $cache = $deltas = [];
+        // $deltas é recebido/devolvido por referência para que a validação em lotes
+        // continue somando o saldo já consumido pelos lotes anteriores.
+        $results = $cache = [];
         foreach ($records as $index => $row) {
             $result = ['row_index' => $index];
             try {
