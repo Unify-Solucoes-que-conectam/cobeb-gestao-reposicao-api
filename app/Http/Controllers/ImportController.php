@@ -101,14 +101,21 @@ class ImportController extends Controller
             'records.*.confirmacao_correcao' => ['nullable', 'string', 'max:4096'],
             'options' => ['nullable', 'array'],
             'options.duplicateAction' => ['sometimes', 'in:ignore,update'],
+            // Saldo já consumido pelos lotes anteriores (validação em lotes).
+            'deltas' => ['nullable', 'array'],
+            'deltas.*' => ['integer'],
         ]);
 
         $records = $request->input('records', []);
-        $options = $request->input('options', []);
+        $options = $request->input('options') ?? [];
+        $deltas = $request->input('deltas') ?? [];
+
+        $data = app(ImportTrocaService::class)->validateRecords($records, $options, $deltas);
 
         return response()->json([
             'success' => true,
-            'data' => app(ImportTrocaService::class)->validateRecords($records, $options)
+            'data' => $data,
+            'deltas' => (object) $deltas,
         ]);
     }
 
