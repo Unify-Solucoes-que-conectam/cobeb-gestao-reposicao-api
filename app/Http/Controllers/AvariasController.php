@@ -163,7 +163,6 @@ class AvariasController extends Controller
                                 ->whereDate('created_at', now()->toDateString()))
                             ->selectRaw('produto_nota_fiscal_id, SUM(quantidade_avariada) as total')
                             ->groupBy('produto_nota_fiscal_id')->pluck('total', 'produto_nota_fiscal_id');
-                        $disponivel = (int) $componentes->sum(fn ($item) => max(0, (int) $item->quantidade - (int) ($consumido[$item->id] ?? 0)));
 
                         $restante = (int) $prodReq['quantidade'];
                         foreach ($componentes as $componente) {
