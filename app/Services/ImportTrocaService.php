@@ -9,6 +9,7 @@ use App\Models\NotaFiscal;
 use App\Models\ProdutoNotaFiscal;
 use App\Models\Produto;
 use App\Models\Troca;
+use App\Support\UnidadeMedida;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -161,6 +162,7 @@ class ImportTrocaService
                     throw new \RuntimeException('A quantidade deve ser um número inteiro positivo.');
                 }
                 $this->date((string) ($row['dt_operacao'] ?? ''));
+                UnidadeMedida::validate($row['unidade_medida'] ?? '');
 
                 if (!self::isTroca($row)) {
                     $result += ['status' => 'valid', 'message' => 'Entrada válida.'];
@@ -191,7 +193,8 @@ class ImportTrocaService
             $trade = new Troca();
             $trade->usuario_responsavel_id = $userId;
             $trade->fill(['produto_nota_fiscal_id' => $snapshot['item']->id, 'operacao' => $result['operacao'],
-                'data_operacao' => $result['data'], 'quantidade' => $result['quantidade'], 'motivo_parcial' => $result['motivo_parcial'] ?: null]);
+                'data_operacao' => $result['data'], 'quantidade' => $result['quantidade'],
+                'unidade_medida' => UnidadeMedida::validate($row['unidade_medida'] ?? ''), 'motivo_parcial' => $result['motivo_parcial'] ?: null]);
             $trade->save();
             app(TrocaAvariaAllocationService::class)->rebuild($snapshot['item']->id);
             return $result + ['item' => $snapshot['item'], 'trade' => $trade];

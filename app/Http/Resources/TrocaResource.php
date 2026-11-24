@@ -18,6 +18,7 @@ class TrocaResource extends JsonResource
             'id' => $this->id,
             'quantidade' => (int) ($this->pivot?->quantidade ?? $this->quantidade),
             'quantidade_movimento' => (int) $this->quantidade,
+            'unidade_medida' => $this->unidade_medida,
             'operacao' => $this->operacao,
             'data_operacao' => $this->data_operacao,
             'correcoes' => (int) ($this->correcoes ?? 0),
