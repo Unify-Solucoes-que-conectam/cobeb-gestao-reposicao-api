@@ -20,6 +20,7 @@ use App\Models\TipoMarca;
 use App\Models\Troca;
 use App\Models\Usuario;
 use App\Services\ImportTrocaService;
+use App\Support\UnidadeMedida;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
@@ -442,14 +443,15 @@ class GenericImport
             $raw = trim((string) ($data['quantidade'] ?? ''));
             if (!$clienteId || !$produtoId || $numero === '') throw new \RuntimeException('Informe cliente, nota e produto válidos.');
             if (!preg_match('/^\d+$/', $raw) || (float) $raw < 1 || (float) $raw > 2147483647) throw new \RuntimeException('Quantidade de entrada deve ser inteira e positiva.');
-            $nota = NotaFiscal::where('numero', $numero)->lockForUpdate()->first();
+            $unidadeMedida = UnidadeMedida::validate($data['unidade_medida'] ?? '');
+            $nota =NotaFiscal::where('numero', $numero)->lockForUpdate()->first();
             if ($nota && $nota->cliente_id !== $clienteId) throw new \RuntimeException('A nota já pertence a outro cliente.');
             $nota ??= new NotaFiscal(['numero' => $numero, 'cliente_id' => $clienteId]);
             $nota->fill(['pedido' => trim((string) ($data['nr_pedido'] ?? '')), 'data_emissao' => $this->toDate($data['emissao'] ?? '')])->save();
             // Cada linha é um componente independente da nota, inclusive quando
             // possui o mesmo produto de uma linha anterior (combos promocionais).
             $item = new ProdutoNotaFiscal(['nota_fiscal_id' => $nota->id, 'produto_id' => $produtoId]);
-            $item->fill(['quantidade' => (int) $raw, 'operacao' => $operacao, 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
+            $item->fill(['quantidade' => (int) $raw, 'unidade_medida' => $unidadeMedida, 'operacao' => $operacao, 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
                 'valor_desconto' => $this->toDecimal($data['desconto'] ?? ''), 'valor_adicional' => $this->toDecimal($data['adic_fina'] ?? ''),
                 'valor_total' => $this->toDecimal($data['total'] ?? '')])->save();
         }, 3);

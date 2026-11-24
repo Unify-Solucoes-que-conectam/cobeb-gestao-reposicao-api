@@ -164,11 +164,15 @@ class AvariasController extends Controller
                             ->selectRaw('produto_nota_fiscal_id, SUM(quantidade_avariada) as total')
                             ->groupBy('produto_nota_fiscal_id')->pluck('total', 'produto_nota_fiscal_id');
 
+                        // A quantidade informada pelo motorista NÃO é limitada pela nota fiscal.
+                        // Distribui primeiro pela capacidade de cada componente (combo) e o excedente
+                        // vai para o último componente, garantindo que nada seja descartado.
                         $restante = (int) $prodReq['quantidade'];
-                        foreach ($componentes as $componente) {
+                        $ultimoIndice = $componentes->count() - 1;
+                        foreach ($componentes->values() as $indice => $componente) {
                             if ($restante <= 0) break;
                             $capacidade = max(0, (int) $componente->quantidade - (int) ($consumido[$componente->id] ?? 0));
-                            $quantidade = min($restante, $capacidade);
+                            $quantidade = $indice === $ultimoIndice ? $restante : min($restante, $capacidade);
                             if ($quantidade <= 0) continue;
 
                             $itemExistente = $avaria->itens()
@@ -267,7 +271,7 @@ class AvariasController extends Controller
                 ->firstOrFail()
             ;
 
-            // validar se a quantidade enviada é menor ou igual à quantidade original do produto na nota fiscal
+            // Sem limite pela quantidade da nota fiscal: o motorista pode informar o que desejar
             $produtoNotaFiscal = ProdutoNotaFiscal::find($itemAvaria->produto_nota_fiscal_id);
 
             if (!$produtoNotaFiscal) {
@@ -275,13 +279,6 @@ class AvariasController extends Controller
                     'success' => false,
                     'message' => 'Produto não encontrado na nota fiscal.',
                 ], 404);
-            }
-
-            if ($request->quantidade > $produtoNotaFiscal->quantidade) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'A quantidade avariada não pode ser maior que a quantidade original na nota fiscal.',
-                ], 400);
             }
 
             $itemAvaria->quantidade_avariada = $request->quantidade;

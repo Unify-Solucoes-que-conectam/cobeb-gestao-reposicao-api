@@ -21,6 +21,7 @@ class Troca extends Model
         'produto_nota_fiscal_id',
         'usuario_responsavel_id',
         'quantidade',
+        'unidade_medida',
         'operacao',
         'data_operacao',
         'correcoes',

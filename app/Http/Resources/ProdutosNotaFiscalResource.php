@@ -23,6 +23,7 @@ class ProdutosNotaFiscalResource extends JsonResource
             'id' => $this->id,
             'quantidade' => $this->quantidade,
             'quantidade_avariada' => $this->quantidade_avariada ?? 0,
+            'unidade_medida' => $this->unidade_medida,
             'valor_total' => $this->valor_total,
         ]);
     }
