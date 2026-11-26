@@ -9,3 +9,6 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('whatsapp:sync-connections')->everyMinute()->withoutOverlapping();
+
+// todas as rotas (mapas) são encerradas à meia-noite (horário de Brasília)
+Schedule::command('mapas:encerrar')->dailyAt('00:00')->timezone('America/Sao_Paulo')->withoutOverlapping();
