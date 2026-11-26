@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Jobs\ProcessImportJob;
 use App\Models\ImportBatch;
 use App\Services\ImportTrocaService;
+use App\Support\ImportFilial;
+use App\Support\Tenant;
 use Exception;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -52,6 +55,13 @@ class ImportController extends Controller
 
         $records = $request->input('records');
         $options = $request->input('options') ?? [];
+
+        // Fora do tenant "Geral", a filial conectada é aplicada aos registros.
+        [$records, $errosFilial] = $this->aplicarTenant($request->input('type'), $records);
+        if ($errosFilial instanceof \Illuminate\Http\JsonResponse) {
+            return $errosFilial;
+        }
+
         if ($request->input('type') === 'vendas_trocas') {
             $results = app(ImportTrocaService::class)->validateRecords($records, $options);
             if (collect($results)->contains(fn ($row) => in_array($row['status'], ['error', 'confirmation'], true))) {
@@ -110,6 +120,11 @@ class ImportController extends Controller
         $options = $request->input('options') ?? [];
         $deltas = $request->input('deltas') ?? [];
 
+        [$records, $errosFilial] = $this->aplicarTenant('vendas_trocas', $records);
+        if ($errosFilial instanceof \Illuminate\Http\JsonResponse) {
+            return $errosFilial;
+        }
+
         $data = app(ImportTrocaService::class)->validateRecords($records, $options, $deltas);
 
         return response()->json([
@@ -117,6 +132,35 @@ class ImportController extends Controller
             'data' => $data,
             'deltas' => (object) $deltas,
         ]);
+    }
+
+    /**
+     * Aplica a filial do tenant conectado aos registros.
+     *
+     * @return array{0: array, 1: JsonResponse|null}
+     */
+    private function aplicarTenant(string $type, array $records): array
+    {
+        $tenant = Tenant::atual();
+
+        if (!$tenant->definido()) {
+            return [$records, response()->json([
+                'success' => false,
+                'message' => 'Nenhuma filial liberada para o seu usuário. Solicite acesso ao administrador.',
+            ], 403)];
+        }
+
+        [$records, $erros] = ImportFilial::aplicar($type, $records, $tenant);
+
+        if ($erros) {
+            return [$records, response()->json([
+                'success' => false,
+                'message' => 'Há registros de outra filial. Troque para a filial correta ou para "Geral" no topo do menu.',
+                'errors' => ['filial' => array_slice($erros, 0, 50)],
+            ], 422)];
+        }
+
+        return [$records, null];
     }
 
     public function list(Request $request)

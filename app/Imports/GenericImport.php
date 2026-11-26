@@ -48,6 +48,9 @@ class GenericImport
     private array $options = [];
     private ?string $userId = null;
 
+    /** Mapas que já tiveram os clientes substituídos neste lote (um mapa pode vir em várias linhas). */
+    private array $mapasSincronizados = [];
+
     public function __construct(string $batchId, string $type, int $totalRows, array $options = [], ?string $userId = null)
     {
         $this->batchId = $batchId;
@@ -132,8 +135,11 @@ class GenericImport
             $categoriaId = $this->fkCache[$cacheKey];
         }
 
+        // O Cód PDV é único por filial (revenda): LP e PM podem ter o mesmo código.
+        $filialId = $this->resolveFilialObrigatoria($filial);
+
         $cliente = Cliente::updateOrCreate(
-            ['codigo' => $codigo],
+            ['codigo' => $codigo, 'filial_id' => $filialId],
             [
                 'documento' => $documento,
                 'nome_fantasia' => $nomeFantasia,
@@ -146,7 +152,6 @@ class GenericImport
                 'cep' => $cep,
                 'latitude' => null,
                 'longitude' => null,
-                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $filial),
                 'categoria_id' => $categoriaId,
                 'tipo_pessoa' => $tipoPessoa,
                 'status' => $status,
@@ -170,9 +175,12 @@ class GenericImport
             return;
         }
 
+        $numerosImportados = [];
+
         foreach ($telefonesArray as $index => $telefone) {
             $isWhatsapp = ($totalTelefones === 1) || ($index === 0);
             $telefoneLimpo = preg_replace('/[^0-9]/', '', $telefone);
+            $numerosImportados[] = $telefoneLimpo;
 
             ClienteTelefones::updateOrCreate(
                 [
@@ -184,6 +192,12 @@ class GenericImport
                 ],
             );
         }
+
+        // A importação substitui os telefones: remove os que não vieram no arquivo.
+        ClienteTelefones::query()
+            ->where('cliente_id', $cliente->id)
+            ->whereNotIn('numero', $numerosImportados)
+            ->delete();
     }
 
     // ─── Produtos ───────────────────────────────────────────────────────
@@ -272,20 +286,29 @@ class GenericImport
             ['descricao' => $desc_cluster],
         );
 
-        $usuario = Usuario::updateOrCreate(
-            ['cpf' => $cpf],
-            [
-                'nome' => $nome,
-                'senha' => $cpf,
-                'role' => 'motorista',
-                'primeiro_acesso' => true,
-            ],
-        );
+        // Não reseta a senha de quem já a alterou (primeiro_acesso = false).
+        $usuario = Usuario::firstOrNew(['cpf' => $cpf]);
+        $usuario->nome = $nome;
+
+        if (!$usuario->exists) {
+            $usuario->senha = $cpf;
+            $usuario->role = 'motorista';
+            $usuario->primeiro_acesso = true;
+        }
+        elseif ($usuario->primeiro_acesso) {
+            // ainda usa a senha padrão: mantém o CPF como senha inicial
+            $usuario->senha = $cpf;
+        }
+
+        $usuario->save();
+
+        // O código do motorista é único por filial (revenda): importar a base da LP
+        // não pode sobrescrever os motoristas da PM que usam o mesmo código.
+        $filialId = $this->resolveFilialObrigatoria($cod_filial);
 
         Motorista::updateOrCreate(
-            ['codigo' => $codigo],
+            ['codigo' => $codigo, 'filial_id' => $filialId],
             [
-                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $cod_filial),
                 'cluster_id' => $cluster->id,
                 'usuario_id' => $usuario->id,
                 'status' => Str::lower(Arr::get($data, 'status')),
@@ -314,32 +337,48 @@ class GenericImport
             throw new \RuntimeException('Missing codFilial (unb)');
         }
 
+        $filialId = $this->resolveFilialObrigatoria($codFilial);
+
+        // Reimportar um mapa substitui os dados (motorista, data, placa e clientes).
         $mapa = Mapa::updateOrCreate(
-            ['codigo' => $codigo],
+            ['codigo' => $codigo, 'filial_id' => $filialId],
             [
-                'filial_id' => $this->resolveFk(Filial::class, 'codigo', $codFilial),
-                'motorista_id' => $this->resolveFk(Motorista::class, 'codigo', $codMotorista),
+                'motorista_id' => $this->resolvePorCodigoNaFilial(Motorista::class, $codMotorista, $filialId),
                 'data_entrega' => $this->toDate($dataEntrega),
                 'placa' => $placa,
             ],
         );
 
-        if (!blank($clientes)) {
-            $clientesArray = array_filter(array_map('trim', explode('/', $clientes)), 'strlen');
+        $clienteIds = [];
+        $clientesArray = array_filter(array_map('trim', explode('/', $clientes)), 'strlen');
 
-            foreach ($clientesArray as $codCliente) {
-                $clienteId = $this->resolveFk(Cliente::class, 'codigo', ltrim($codCliente, '0'));
+        foreach ($clientesArray as $codCliente) {
+            $clienteId = $this->resolvePorCodigoNaFilial(Cliente::class, ltrim($codCliente, '0'), $filialId)
+                ?? $this->resolvePorCodigoNaFilial(Cliente::class, $codCliente, $filialId);
 
-                if ($clienteId) {
-                    ClientesMapa::updateOrCreate([
-                        'mapa_id' => $mapa->id,
-                        'cliente_id' => $clienteId,
-                    ]);
-                }
-                else {
-                    Log::warning("[ImportMapa] Cliente '{$codCliente}' não encontrado no banco para o Mapa '{$codigo}'.");
-                }
+            if ($clienteId) {
+                $clienteIds[] = $clienteId;
             }
+            else {
+                Log::warning("[ImportMapa] Cliente '{$codCliente}' não encontrado no banco para o Mapa '{$codigo}'.");
+            }
+        }
+
+        // Na primeira linha do mapa neste lote, remove os clientes que não vieram no arquivo.
+        // Linhas seguintes do mesmo mapa apenas acrescentam clientes.
+        if (!isset($this->mapasSincronizados[$mapa->id])) {
+            ClientesMapa::query()
+                ->where('mapa_id', $mapa->id)
+                ->whereNotIn('cliente_id', $clienteIds)
+                ->delete();
+            $this->mapasSincronizados[$mapa->id] = true;
+        }
+
+        foreach (array_unique($clienteIds) as $clienteId) {
+            ClientesMapa::firstOrCreate([
+                'mapa_id' => $mapa->id,
+                'cliente_id' => $clienteId,
+            ]);
         }
     }
 
@@ -438,15 +477,20 @@ class GenericImport
         if (!in_array($operacao, ['1', '2'], true)) throw new \RuntimeException('Operação inválida. Use 1, 2, 5 ou 39.');
         DB::transaction(function () use ($data, $operacao) {
             $numero = trim((string) ($data['nota_fiscal'] ?? ''));
-            $clienteId = $this->resolveFk(Cliente::class, 'codigo', trim((string) ($data['cliente'] ?? '')));
+            $cliente = Cliente::resolverPorCodigo(
+                trim((string) ($data['cliente'] ?? '')),
+                trim((string) ($data['filial'] ?? '')),
+                $numero,
+            );
+            $clienteId = $cliente?->id;
             $produtoId = $this->resolveFk(Produto::class, 'codigo', trim((string) ($data['produto'] ?? '')));
             $raw = trim((string) ($data['quantidade'] ?? ''));
             if (!$clienteId || !$produtoId || $numero === '') throw new \RuntimeException('Informe cliente, nota e produto válidos.');
             if (!preg_match('/^\d+$/', $raw) || (float) $raw < 1 || (float) $raw > 2147483647) throw new \RuntimeException('Quantidade de entrada deve ser inteira e positiva.');
-            $unidadeMedida = UnidadeMedida::validate($data['unidade_medida'] ?? '');
-            $nota =NotaFiscal::where('numero', $numero)->lockForUpdate()->first();
+            // O número da nota é único por filial (revenda): busca na filial do cliente.
+            $nota = NotaFiscal::numeroNaFilial($numero, $cliente->filial_id)->lockForUpdate()->first();
             if ($nota && $nota->cliente_id !== $clienteId) throw new \RuntimeException('A nota já pertence a outro cliente.');
-            $nota ??= new NotaFiscal(['numero' => $numero, 'cliente_id' => $clienteId]);
+            $nota ??= new NotaFiscal(['numero' => $numero, 'cliente_id' => $clienteId, 'filial_id' => $cliente->filial_id]);
             $nota->fill(['pedido' => trim((string) ($data['nr_pedido'] ?? '')), 'data_emissao' => $this->toDate($data['emissao'] ?? '')])->save();
             // Cada linha é um componente independente da nota, inclusive quando
             // possui o mesmo produto de uma linha anterior (combos promocionais).
@@ -474,6 +518,48 @@ class GenericImport
         $this->fkCache[$cacheKey][$value] = $record?->id;
 
         return $this->fkCache[$cacheKey][$value];
+    }
+
+    /** Resolve a filial (revenda) pelo código; obrigatória para separar as bases. */
+    private function resolveFilialObrigatoria(string $codFilial): string
+    {
+        if (blank($codFilial)) {
+            throw new \RuntimeException('Filial não informada.');
+        }
+
+        $filialId = $this->resolveFk(Filial::class, 'codigo', $codFilial);
+
+        if (!$filialId) {
+            throw new \RuntimeException("Filial '{$codFilial}' não encontrada.");
+        }
+
+        return $filialId;
+    }
+
+    /**
+     * Busca o registro pelo código dentro da filial. Se não existir na filial, aceita
+     * um registro sem filial (bases antigas). Nunca usa registro de outra revenda.
+     */
+    private function resolvePorCodigoNaFilial(string $modelClass, string $codigo, ?string $filialId): ?string
+    {
+        if (blank($codigo)) {
+            return null;
+        }
+
+        $cacheKey = $modelClass . '_codigo_filial';
+        $key = $codigo . '|' . $filialId;
+
+        if (array_key_exists($key, $this->fkCache[$cacheKey] ?? [])) {
+            return $this->fkCache[$cacheKey][$key];
+        }
+
+        $id = $modelClass::query()->where('codigo', $codigo)->where('filial_id', $filialId)->value('id');
+
+        if (!$id) {
+            $id = $modelClass::query()->where('codigo', $codigo)->whereNull('filial_id')->value('id');
+        }
+
+        return $this->fkCache[$cacheKey][$key] = $id;
     }
 
     private function updateProgress(int $chunkProcessedRows): void

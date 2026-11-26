@@ -39,23 +39,20 @@ class UsuariosController extends Controller
         $query = Usuario::query();
 
         if ($request->filled('search')) {
-            $query->where('nome', 'like', '%' . $request->input('search') . '%')
-                ->orWhere('cpf', 'like', '%' . $request->input('search') . '%')
-            ;
+            $search = $request->input('search');
+            // agrupado para não anular o filtro de tipo (role)
+            $query->where(fn ($q) => $q->where('nome', 'like', '%' . $search . '%')->orWhere('cpf', 'like', '%' . $search . '%'));
         }
 
         if ($request->filled('role')) {
             $query->where('role', $request->input('role'));
         }
 
-        $usuarios = $query->get();
+        $query->with('grupo:id,nome,perfil')->orderBy('nome')->orderBy('id');
 
         try {
-            return response()->json([
-                'success' => true,
-                'message' => 'Consulta de usuários realizada com sucesso.',
-                'data' => $usuarios,
-            ]);
+            // paginado quando a tela envia "per_page"
+            return static::paginarOuListar($request, $query, fn ($usuario) => $usuario, 'Consulta de usuários realizada com sucesso.');
         }
         catch (\Exception $e) {
             return response()->json([

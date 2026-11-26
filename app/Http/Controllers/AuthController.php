@@ -7,6 +7,7 @@ use App\Http\Resources\UsuarioResource;
 use App\Models\Menu;
 use App\Models\Usuario;
 use App\Notifications\UserNotification;
+use App\Support\Tenant;
 // use App\Services\GoogleAuthService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -96,28 +97,38 @@ class AuthController extends Controller
             }
         }
 
-        $visible = fn($query) => $query
-            ->whereNull('required_role')
-            ->orWhere('required_role', $user->role)
-        ;
-
-        $menus = Menu::query()
-            ->with(['subMenus' => $visible])
-            ->whereNull('menu_pai_id')
-            ->where($visible)
-            ->orderBy('ordem')
-            ->get()
-        ;
-
         return response()->json([
             'success' => true,
             'message' => 'Login realizado com sucesso.',
-            'data' => [
-                'token' => $token,
-                'usuario' => UsuarioResource::make($user->load('motorista', 'motorista.mapaAtual', 'motorista.filial')),
-                'menus' => MenuResource::collection($menus),
-            ],
+            'data' => ['token' => $token] + $this->sessao($user),
         ]);
+    }
+
+    /**
+     * Dados da sessão atual (usados pelo front para atualizar permissões sem novo login).
+     */
+    public function me(Request $request)
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Sessão carregada com sucesso.',
+            'data' => $this->sessao($request->user()),
+        ]);
+    }
+
+    /**
+     * Usuário, menus do grupo, ações liberadas e tenants (filiais) disponíveis.
+     */
+    private function sessao(Usuario $user): array
+    {
+        $user->load('motorista', 'motorista.mapaAtual', 'motorista.filial', 'grupo');
+
+        return [
+            'usuario' => UsuarioResource::make($user),
+            'menus' => MenuResource::collection($user->menusPermitidos()),
+            'permissoes' => $user->permissoes(),
+            'tenants' => Tenant::opcoes($user),
+        ];
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Tenant;
 use App\Exports\TrocasClientesExport;
 use Exception;
 use Illuminate\Http\Request;
@@ -49,6 +50,7 @@ class TrocasController extends Controller
             ->join('notas_fiscais', 'notas_fiscais.id', '=', 'produtos_nota_fiscal.nota_fiscal_id')
             ->join('clientes', 'clientes.id', '=', 'notas_fiscais.cliente_id')
             ->whereBetween('trocas.data_operacao', [$validated['data_inicial'], $validated['data_final']])
+            ->tap(fn ($q) => Tenant::atual()->restringir($q, 'clientes.filial_id'))
             ->selectRaw("COALESCE(NULLIF(clientes.razao_social, ''), NULLIF(clientes.nome_fantasia, ''), clientes.codigo) as cliente")
             ->selectRaw('SUM(trocas.quantidade) as quantidade_trocada')
             ->groupBy('clientes.id', 'clientes.razao_social', 'clientes.nome_fantasia', 'clientes.codigo')
@@ -74,6 +76,11 @@ class TrocasController extends Controller
             ->join('produtos', 'produtos.id', '=', 'produtos_nota_fiscal.produto_id')
             ->whereIn('trocas.operacao', ['5', '39'])
             ->selectRaw("trocas.id, 'troca' as origem, {$clientName} as cliente, clientes.codigo as cliente_codigo, notas_fiscais.numero as nota, produtos.codigo as produto_codigo, produtos.descricao as produto, trocas.quantidade, trocas.operacao, trocas.data_operacao, trocas.created_at");
+
+        // numa filial (fora do "Geral"), só os movimentos dos clientes da filial conectada
+        $tenant = Tenant::atual();
+        $tenant->restringir($sales, 'clientes.filial_id');
+        $tenant->restringir($trades, 'clientes.filial_id');
 
         $query = DB::query()->fromSub($sales->unionAll($trades), 'movimentos');
         if (!empty($filters['search'])) {

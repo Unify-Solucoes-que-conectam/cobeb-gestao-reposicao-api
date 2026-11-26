@@ -7,6 +7,7 @@ use App\Exports\MapasExport;
 use App\Exports\MotoristasExport;
 use App\Exports\ProdutosExport;
 use App\Exports\VendasTrocasExport;
+use App\Support\Tenant;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ExportController extends Controller
@@ -25,6 +26,11 @@ class ExportController extends Controller
             return response()->json(['error' => 'Modelo inválido.'], 400);
         }
 
-        return Excel::download(new $this->modelos[$modelo], "{$modelo}.xlsx");
+        // o modelo de vendas e trocas lista clientes/notas: fora do "Geral", só os da filial conectada
+        $export = $modelo === 'vendas_trocas'
+            ? new VendasTrocasExport(Tenant::atual()->filial)
+            : new $this->modelos[$modelo];
+
+        return Excel::download($export, "{$modelo}.xlsx");
     }
 }

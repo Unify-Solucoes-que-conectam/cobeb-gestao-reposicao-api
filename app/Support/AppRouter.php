@@ -27,6 +27,7 @@ class AppRouter
                 ->middleware([
                     'api',
                     'auth:sanctum',
+                    \App\Http\Middleware\ResolveTenant::class,
                 ])
                 ->group(function () use ($file) {
                     include $file->getPathname();

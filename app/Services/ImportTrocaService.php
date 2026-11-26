@@ -52,9 +52,14 @@ class ImportTrocaService
 
     private function snapshot(array $row, bool $lock): array
     {
-        $client = Cliente::where('codigo', trim((string) ($row['cliente'] ?? '')))->first();
+        $client = Cliente::resolverPorCodigo(
+            trim((string) ($row['cliente'] ?? '')),
+            trim((string) ($row['filial'] ?? '')),
+            trim((string) ($row['nota_fiscal'] ?? '')),
+        );
         if (!$client) throw new \RuntimeException('Cliente não encontrado.');
-        $query = NotaFiscal::where('numero', trim((string) ($row['nota_fiscal'] ?? '')));
+        // O número da nota é único por filial (revenda): busca na filial do cliente.
+        $query = NotaFiscal::numeroNaFilial(trim((string) ($row['nota_fiscal'] ?? '')), $client->filial_id);
         $note = ($lock ? $query->lockForUpdate() : $query)->first();
         if (!$note) throw new \RuntimeException('Nota fiscal não encontrada. Importe a entrada primeiro.');
         if ($note->cliente_id !== $client->id) {
@@ -118,7 +123,7 @@ class ImportTrocaService
             if (!self::isTroca($row)) continue;
             $result = ['row_index' => $index];
             try {
-                $key = json_encode([$row['cliente'] ?? '', $row['nota_fiscal'] ?? '', $row['produto'] ?? '']);
+                $key = json_encode([$row['cliente'] ?? '', $row['filial'] ?? '', $row['nota_fiscal'] ?? '', $row['produto'] ?? '']);
                 $snapshot = $cache[$key] ??= $this->snapshot($row, false);
                 $decision = $this->decision($row, $options, $snapshot, $deltas[$snapshot['item']->id] ?? 0);
                 $result += $decision;
@@ -148,7 +153,7 @@ class ImportTrocaService
                 }
                 $clientCode = trim((string) ($row['cliente'] ?? ''));
                 $productCode = trim((string) ($row['produto'] ?? ''));
-                if (!Cliente::where('codigo', $clientCode)->exists()) {
+                if (!Cliente::resolverPorCodigo($clientCode, trim((string) ($row['filial'] ?? '')), trim((string) ($row['nota_fiscal'] ?? '')))) {
                     throw new \RuntimeException('Cliente não encontrado.');
                 }
                 if (!Produto::where('codigo', $productCode)->exists()) {
@@ -167,7 +172,7 @@ class ImportTrocaService
                 if (!self::isTroca($row)) {
                     $result += ['status' => 'valid', 'message' => 'Entrada válida.'];
                 } else {
-                    $key = json_encode([$clientCode, $row['nota_fiscal'], $productCode]);
+                    $key = json_encode([$clientCode, $row['filial'] ?? '', $row['nota_fiscal'], $productCode]);
                     $snapshot = $cache[$key] ??= $this->snapshot($row, false);
                     $decision = $this->decision($row, $options, $snapshot, $deltas[$snapshot['item']->id] ?? 0);
                     $result += $decision;
