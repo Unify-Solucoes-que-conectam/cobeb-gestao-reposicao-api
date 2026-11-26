@@ -137,4 +137,17 @@ class EncerramentoMapasTest extends TestCase
         $this->assertSame($mapa->id, $this->mapaDoMotorista());
         $this->assertCount(1, $this->clientesDoMotorista($mapa));
     }
+
+    public function test_mapa_sem_motorista_com_entrega_vencida_fica_encerrado(): void
+    {
+        $vencido = Mapa::create(['codigo' => '7000', 'data_entrega' => '2026-11-25', 'placa' => 'BBB1234']);
+        $deHoje = Mapa::create(['codigo' => '7001', 'data_entrega' => '2026-11-26', 'placa' => 'CCC1234']);
+
+        $this->assertSame('encerrado', $vencido->status);
+        $this->assertSame('nao_designado', $deHoje->status);
+
+        $this->artisan('mapas:encerrar')->assertSuccessful();
+        $this->assertNotNull($vencido->fresh()->encerrado_em);
+        $this->assertNull($deHoje->fresh()->encerrado_em);
+    }
 }

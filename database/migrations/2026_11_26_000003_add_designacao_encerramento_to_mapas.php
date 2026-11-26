@@ -32,6 +32,12 @@ return new class extends Migration
             ->whereNotNull('motorista_id')
             ->whereNull('designado_em')
             ->update(['designado_em' => DB::raw('updated_at'), 'encerrado_em' => $agora]);
+
+        // mapas com entrega vencida também ficam encerrados, mesmo sem motorista
+        DB::table('mapas')
+            ->whereNull('encerrado_em')
+            ->whereDate('data_entrega', '<', today())
+            ->update(['encerrado_em' => $agora]);
     }
 
     public function down(): void

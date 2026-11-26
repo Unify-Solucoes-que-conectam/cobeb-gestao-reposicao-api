@@ -55,15 +55,21 @@ class Mapa extends Model
         $this->encerrado_em = null;
     }
 
+    /** nao_designado | em_andamento | encerrado */
     public function getStatusAttribute(): string
     {
+        $dataEntrega = substr((string) $this->data_entrega, 0, 10);
+
+        // entrega já passou: encerrado, com ou sem motorista
+        if ($this->encerrado_em || $dataEntrega < today()->toDateString()) {
+            return 'encerrado';
+        }
+
         if (!$this->motorista_id) {
             return 'nao_designado';
         }
 
-        $ativo = !$this->encerrado_em
-            && $this->designado_em?->gte(today())
-            && substr((string) $this->data_entrega, 0, 10) === today()->toDateString();
+        $ativo = $this->designado_em?->gte(today()) && $dataEntrega === today()->toDateString();
 
         return $ativo ? 'em_andamento' : 'encerrado';
     }
