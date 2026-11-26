@@ -340,14 +340,14 @@ class GenericImport
         $filialId = $this->resolveFilialObrigatoria($codFilial);
 
         // Reimportar um mapa substitui os dados (motorista, data, placa e clientes).
-        $mapa = Mapa::updateOrCreate(
-            ['codigo' => $codigo, 'filial_id' => $filialId],
-            [
-                'motorista_id' => $this->resolvePorCodigoNaFilial(Motorista::class, $codMotorista, $filialId),
-                'data_entrega' => $this->toDate($dataEntrega),
-                'placa' => $placa,
-            ],
-        );
+        // A importação conta como designação: a rota vale até as 00h do dia da importação.
+        $mapa = Mapa::firstOrNew(['codigo' => $codigo, 'filial_id' => $filialId]);
+        $mapa->fill([
+            'data_entrega' => $this->toDate($dataEntrega),
+            'placa' => $placa,
+        ]);
+        $mapa->designar($this->resolvePorCodigoNaFilial(Motorista::class, $codMotorista, $filialId));
+        $mapa->save();
 
         $clienteIds = [];
         $clientesArray = array_filter(array_map('trim', explode('/', $clientes)), 'strlen');

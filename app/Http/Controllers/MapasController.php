@@ -83,9 +83,9 @@ class MapasController extends Controller
             $query->where('mapa_id', $mapaId);
 
             $clientesMapa = ClientesMapa::where('mapa_id', $mapaId)
-                // retorna apenas os clientes do mapa que possuem data de entrega igual a hoje, caso o usuário seja um motorista
-                ->when($user->role === 'motorista', fn($query) => $query->whereHas('mapa', function ($query) {
-                    $query->where('data_entrega', '=', today());
+                // motorista só vê os clientes da sua rota em andamento (rotas encerram às 00h)
+                ->when($user->role === 'motorista', fn($query) => $query->whereHas('mapa', function ($query) use ($user) {
+                    $query->ativos()->where('motorista_id', $user->motorista?->id);
                 }))
                 ->with([
                     // Usamos um array no 'cliente' para injetar o withCount e carregar as outras relações
@@ -179,7 +179,8 @@ class MapasController extends Controller
 
             $trocou = $mapa->motorista_id !== null && $mapa->motorista_id !== $motorista->id;
 
-            $mapa->motorista_id = $motorista->id;
+            // a designação vale somente hoje: às 00h a rota é encerrada
+            $mapa->designar($motorista->id);
             $mapa->save();
 
             return response()->json([

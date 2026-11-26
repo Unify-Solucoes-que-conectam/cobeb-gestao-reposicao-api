@@ -96,7 +96,8 @@ class Motorista extends Model
 
     public function mapaAtual()
     {
-        return $this->hasOne(Mapa::class, 'motorista_id')->where('data_entrega', '=', today());
+        // rota em andamento: designada hoje e ainda não encerrada (encerra às 00h)
+        return $this->hasOne(Mapa::class, 'motorista_id')->ativos()->latest('designado_em');
     }
 
     public function filial()

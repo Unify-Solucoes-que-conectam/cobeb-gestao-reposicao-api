@@ -29,6 +29,9 @@ class MapaResource extends JsonResource
             'motorista' => new MotoristaResource($this->whenLoaded('motorista')),
             'filial' => new FilialResource($this->whenLoaded('filial')),
             'data_entrega' => $this->data_entrega,
+            'designado_em' => $this->designado_em,
+            'encerrado_em' => $this->encerrado_em,
+            'status' => $this->status, // nao_designado | em_andamento | encerrado
             'placa' => $this->placa,
         ];
     }
