@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Tenant;
 use App\Http\Resources\AvariaResource;
 use App\Http\Resources\ClienteResource;
 use App\Http\Resources\MapaResource;
 use App\Models\Avaria;
+use App\Models\Cliente;
 use App\Models\ClientesMapa;
 use App\Models\Mapa;
+use App\Models\Motorista;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MapasController extends Controller
 {
@@ -18,29 +22,24 @@ class MapasController extends Controller
             $query = Mapa::query();
 
             // filtro por código
-            if ($request->has('search')) {
-                $query->Where('codigo', 'like', '%' . $request->input('search') . '%');
+            if ($request->filled('search')) {
+                $query->where('codigo', 'like', '%' . $request->input('search') . '%');
             }
 
-            // filtro por filial
-            if ($request->has('filial')) {
-                $query->where('filial_id', $request->input('filial'));
-            }
+            // filial: no tenant "Geral" usa o filtro da tela; numa filial, sempre a filial conectada
+            Tenant::atual()->restringir($query, 'filial_id', $request->input('filial'));
 
-            $mapas = $query->with([
+            $query->with([
                 'clientes',
                 'clientes.cliente',
                 'motorista',
                 'motorista.filial',
                 'motorista.cluster',
                 'filial'
-            ]);
+            ])->orderByDesc('data_entrega')->orderBy('codigo')->orderBy('id');
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Mapas carregados com sucesso.',
-                'data'    => MapaResource::collection($mapas->get())
-            ]);
+            // paginado quando a tela envia "per_page"
+            return static::paginarOuListar($request, $query, fn ($mapa) => new MapaResource($mapa), 'Mapas carregados com sucesso.');
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -152,25 +151,106 @@ class MapasController extends Controller
         }
     }
 
+    /**
+     * Designa ou troca o motorista responsável pelo mapa.
+     * Regra: um mapa que já possui motorista pode ser alterado para outro motorista.
+     */
     public function designarMotorista(Request $request, string $mapaId, string $motoristaId)
     {
         try {
-            // 1. Encontra o mapa pelo ID fornecido
-            $mapa = Mapa::findOrFail($mapaId);
+            $mapa = Mapa::find($mapaId);
+            if (!$mapa) {
+                return response()->json(['success' => false, 'message' => 'Mapa não encontrado.'], 404);
+            }
 
-            // 2. Atualiza o motorista_id do mapa
-            $mapa->motorista_id = $motoristaId;
+            $motorista = Motorista::find($motoristaId);
+            if (!$motorista) {
+                return response()->json(['success' => false, 'message' => 'Motorista não encontrado.'], 404);
+            }
+
+            // o motorista precisa ser da mesma revenda (filial) do mapa
+            if ($mapa->filial_id && $motorista->filial_id !== $mapa->filial_id) {
+                return response()->json(['success' => false, 'message' => 'O motorista não pertence à filial do mapa.'], 422);
+            }
+
+            if ($motorista->status !== 'ativo') {
+                return response()->json(['success' => false, 'message' => 'Apenas motoristas ativos podem ser designados.'], 422);
+            }
+
+            $trocou = $mapa->motorista_id !== null && $mapa->motorista_id !== $motorista->id;
+
+            $mapa->motorista_id = $motorista->id;
             $mapa->save();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Motorista designado ao mapa com sucesso.',
-                'data'    => new MapaResource($mapa)
+                'message' => $trocou ? 'Motorista do mapa alterado com sucesso.' : 'Motorista designado ao mapa com sucesso.',
+                'data'    => new MapaResource($mapa->load(['motorista', 'filial'])),
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao designar motorista ao mapa.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Substitui a lista de clientes vinculados ao mapa.
+     */
+    public function atualizarClientes(Request $request, string $mapaId)
+    {
+        $mapa = Mapa::find($mapaId);
+        if (!$mapa) {
+            return response()->json(['success' => false, 'message' => 'Mapa não encontrado.'], 404);
+        }
+
+        $dados = $request->validate([
+            'clientes'   => ['present', 'array'],
+            'clientes.*' => ['string', 'distinct', 'exists:clientes,id'],
+        ], [
+            'clientes.*.exists' => 'Cliente não encontrado.',
+        ]);
+
+        $clienteIds = $dados['clientes'];
+
+        // os clientes precisam ser da mesma revenda (filial) do mapa
+        if ($mapa->filial_id) {
+            $deOutraFilial = Cliente::query()
+                ->whereIn('id', $clienteIds)
+                ->whereNotNull('filial_id')
+                ->where('filial_id', '!=', $mapa->filial_id)
+                ->exists();
+
+            if ($deOutraFilial) {
+                return response()->json(['success' => false, 'message' => 'Há clientes que não pertencem à filial do mapa.'], 422);
+            }
+        }
+
+        try {
+            DB::transaction(function () use ($mapa, $clienteIds) {
+                ClientesMapa::query()
+                    ->where('mapa_id', $mapa->id)
+                    ->whereNotIn('cliente_id', $clienteIds)
+                    ->delete();
+
+                foreach ($clienteIds as $clienteId) {
+                    ClientesMapa::firstOrCreate(['mapa_id' => $mapa->id, 'cliente_id' => $clienteId]);
+                }
+            });
+
+            $mapa->load(['clientes.cliente', 'motorista', 'filial']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Clientes do mapa atualizados com sucesso.',
+                'data'    => new MapaResource($mapa),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao atualizar os clientes do mapa.',
                 'error'   => $e->getMessage()
             ], 500);
         }

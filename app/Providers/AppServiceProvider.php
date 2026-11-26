@@ -24,8 +24,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::before(fn($user) => $user->role === 'administrador' ? true : null);
-        Gate::define('manage-whatsapp', fn($user) => $user->role === 'administrador');
-        Gate::define('manage-users', fn($user) => $user->role === 'administrador');
+
+        // Cada ação do catálogo (config/permissoes.php) vira um Gate liberado pelo grupo do usuário.
+        foreach (array_keys(config('permissoes.acoes', [])) as $acao) {
+            Gate::define($acao, fn($user) => $user->temPermissao($acao));
+        }
+        Gate::define('manage-whatsapp', fn($user) => $user->temPermissao('whatsapp.gerenciar'));
+        Gate::define('manage-users', fn($user) => $user->temPermissao('usuarios.gerenciar'));
 
         /**
          * Define a regra padrão para novas senhas:

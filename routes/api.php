@@ -16,6 +16,7 @@ Route::get('whatsapp/media/{encodedPath}', [WhatsAppMediaController::class, 'sho
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('auth/logout', [AuthController::class, 'logout']);
+    Route::get('auth/me', [AuthController::class, 'me']);
 
     AppRouter::load(base_path('routes/private'));
 

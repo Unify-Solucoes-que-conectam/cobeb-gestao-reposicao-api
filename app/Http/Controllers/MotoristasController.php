@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Tenant;
 use App\Models\Motorista;
 use App\Models\Usuario;
 use Illuminate\Http\Request;
@@ -20,10 +21,11 @@ class MotoristasController extends Controller
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($query) use ($search) {
-                $query->orWhereHas('usuario', function ($query) use ($search) {
-                    $query->where('nome', 'like', '%' . $search . '%')
-                        ->orWhere('cpf', 'like', '%' . $search . '%');
-                });
+                $query->where('codigo', 'like', '%' . $search . '%')
+                    ->orWhereHas('usuario', function ($query) use ($search) {
+                        $query->where('nome', 'like', '%' . $search . '%')
+                            ->orWhere('cpf', 'like', '%' . $search . '%');
+                    });
             });
         }
 
@@ -32,27 +34,24 @@ class MotoristasController extends Controller
             $query->where('cluster_id', $request->input('cluster'));
         }
 
-        // filtrar por filial
-        if ($request->filled('filial')) {
-            $query->where('filial_id', $request->input('filial'));
-        }
+        // filtrar por filial (aceita "filial" ou "filial_id")
+        // no tenant "Geral" usa o filtro da tela; numa filial, sempre a filial conectada
+        Tenant::atual()->restringir($query, 'filial_id', $request->input('filial', $request->input('filial_id')));
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
 
-        $motoristas = $query->with([
-            'usuario',
-            'filial',
-            'cluster'
-        ])->get();
+        $query->with(['usuario', 'filial', 'cluster'])->orderBy('codigo')->orderBy('id');
 
         try {
-            return response()->json([
-                'success' => true,
-                'message' => 'Consulta de motoristas realizada com sucesso.',
-                'data' => MotoristaResource::collection($motoristas)
-            ]);
+            // paginado quando a tela envia "per_page" (listagem); completo para seletores
+            return static::paginarOuListar(
+                $request,
+                $query,
+                fn ($motorista) => new MotoristaResource($motorista),
+                'Consulta de motoristas realizada com sucesso.',
+            );
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -61,11 +60,29 @@ class MotoristasController extends Controller
         }
     }
 
+    /** Fora do tenant "Geral", o motorista precisa pertencer à filial conectada. */
+    private function validarFilialDoTenant(?string $filialId)
+    {
+        $tenant = Tenant::atual();
+
+        if ($tenant->geral || ($tenant->filial && $filialId === $tenant->filial->id)) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'O motorista precisa ser da filial conectada. Para outras filiais, troque o tenant no topo do menu.',
+        ], 422);
+    }
+
     // função para criar um novo motorista
     public function store(Request $request)
     {
+        if ($erro = $this->validarFilialDoTenant($request->input('filial_id'))) {
+            return $erro;
+        }
 
-        $validator = Validator::make($request->all(), Motorista::createRules(), Motorista::messages());
+        $validator = Validator::make($request->all(), Motorista::createRules($request->input('filial_id')), Motorista::messages());
 
         if ($validator->fails()) {
             return response()->json([
@@ -138,13 +155,18 @@ class MotoristasController extends Controller
             ], 404);
         }
 
+        // fora do "Geral", só edita motoristas da filial conectada e não os move para outra filial
+        if ($erro = $this->validarFilialDoTenant($motorista->filial_id) ?? $this->validarFilialDoTenant($request->input('filial_id', $motorista->filial_id))) {
+            return $erro;
+        }
+
         // 2. Pegar o ID do usuário correto vinculado a este motorista
         $usuarioId = $motorista->usuario_id ?? $motorista->usuario?->id;
 
         // 3. Validar passando os IDs corretos para ignorar no Rule::unique
         $validator = Validator::make(
             $request->all(),
-            Motorista::updateRules($id, $usuarioId),
+            Motorista::updateRules($id, $usuarioId, $request->input('filial_id', $motorista->filial_id)),
             Motorista::messages()
         );
 
@@ -232,6 +254,9 @@ class MotoristasController extends Controller
                     'success' => false,
                     'message' => 'Motorista não encontrado para exclusão.',
                 ], 404);
+            }
+            if ($erro = $this->validarFilialDoTenant($motorista->filial_id)) {
+                return $erro;
             }
             $motorista->delete();
             return response()->json([

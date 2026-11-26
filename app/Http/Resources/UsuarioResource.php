@@ -19,6 +19,15 @@ class UsuarioResource extends JsonResource
             'nome' => $this->nome,
             'cpf' => $this->cpf,
             'role' => $this->role,
+            'grupo' => $this->whenLoaded('grupo', fn () => $this->grupo ? [
+                'id' => $this->grupo->id,
+                'nome' => $this->grupo->nome,
+                'perfil' => $this->grupo->perfil,
+            ] : null),
+            'acesso_geral' => (bool) $this->acesso_geral,
+            'filiais' => $this->whenLoaded('filiais', fn () => $this->filiais->map(fn ($f) => [
+                'id' => $f->id, 'codigo' => $f->codigo, 'descricao' => $f->descricao,
+            ])),
             'primeiro_acesso' => (bool) $this->primeiro_acesso,
 
             'motorista' => MotoristaResource::make($this->whenLoaded('motorista')),

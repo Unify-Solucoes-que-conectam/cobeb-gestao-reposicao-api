@@ -32,7 +32,7 @@ class Motorista extends Model
     ];
 
     // --- Validation Rules ---
-    public static function createRules(): array
+    public static function createRules(?string $filialId = null): array
     {
         return [
             // regras para criação de usuário
@@ -40,7 +40,8 @@ class Motorista extends Model
             'cpf' => ['required', 'unique:usuarios,cpf'],
 
             // regras para criação de motorista
-            'codigo' => ['required', 'unique:motoristas,codigo'],
+            // o código do motorista é único dentro da filial (revenda)
+            'codigo' => ['required', Rule::unique('motoristas', 'codigo')->where('filial_id', $filialId)],
             'filial_id' => ['nullable', 'exists:filiais,id'],
             'cluster_id' => ['nullable', 'exists:clusters,id'],
             'status' => ['nullable', 'in:ativo,inativo,bloqueado'],
@@ -49,7 +50,7 @@ class Motorista extends Model
         ];
     }
 
-    public static function updateRules($motoristaId = null, $usuarioId = null): array
+    public static function updateRules($motoristaId = null, $usuarioId = null, ?string $filialId = null): array
     {
         return [
             'nome' => ['required', 'filled'],
@@ -61,7 +62,7 @@ class Motorista extends Model
             'codigo' => [
                 'required',
                 'string',
-                Rule::unique('motoristas', 'codigo')->ignore($motoristaId)
+                Rule::unique('motoristas', 'codigo')->where('filial_id', $filialId)->ignore($motoristaId)
             ],
             'filial_id' => ['required', 'nullable', 'exists:filiais,id'],
             'cluster_id' => ['required', 'nullable', 'exists:clusters,id'],
@@ -78,7 +79,7 @@ class Motorista extends Model
             'cpf.filled' => 'O CPF precisa ser preenchido.',
             'cpf.unique' => 'O CPF já está cadastrado.',
             'codigo.filled' => 'O código do motorista precisa ser preenchido.',
-            'codigo.unique' => 'O código do motorista já está cadastrado.',
+            'codigo.unique' => 'O código do motorista já está cadastrado nesta filial.',
             'codigo.nullable' => 'O código do motorista não pode ser nulo.',
             'filial_id.exists' => 'O ID da filial informado não existe.',
             'cluster_id.exists' => 'O ID do cluster informado não existe.',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\EvolutionException;
 use App\Jobs\EnviarMensagemWhatsAppJob;
 use App\Models\Filial;
+use App\Support\Tenant;
 use App\Models\WhatsAppConfiguration;
 use App\Models\WhatsAppTemplate;
 use App\Support\EvolutionClient;
@@ -30,8 +31,12 @@ class WhatsAppConfigurationController extends Controller
             ->first()
         ;
 
+        // fora do tenant "Geral", só a filial conectada
+        $tenant = Tenant::atual();
+
         $filiais = Filial::query()
             ->with(['whatsappConfiguration.templates'])
+            ->when(!$tenant->geral, fn ($q) => $tenant->restringir($q, 'id'))
             ->orderBy('codigo')
             ->get()
             ->map(fn(Filial $filial) => [

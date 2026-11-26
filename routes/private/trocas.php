@@ -3,5 +3,5 @@
 use App\Http\Controllers\TrocasController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('exportar', [TrocasController::class, 'export']);
+Route::get('exportar', [TrocasController::class, 'export'])->middleware('can:trocas.exportar');
 Route::get('', [TrocasController::class, 'index']);

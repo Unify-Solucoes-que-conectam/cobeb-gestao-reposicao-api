@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Tenant;
 use App\Http\Resources\AvariaResource;
 use App\Http\Resources\ClienteResource;
 use App\Http\Resources\NotaFiscalResource;
@@ -24,6 +25,15 @@ class ClientesController extends Controller
                 $query->where('codigo', 'like', '%' . $search . '%')
                     ->orWhere('nome_fantasia', 'like', '%' . $search . '%');
             });
+        }
+
+        // filtrar por filial (revenda)
+        // no tenant "Geral" usa o filtro da tela; numa filial, sempre a filial conectada
+        Tenant::atual()->restringir($query, 'filial_id', $request->input('filial', $request->input('filial_id')));
+
+        // limite opcional (usado pelas buscas de seleção)
+        if ($request->filled('limit')) {
+            $query->orderBy('nome_fantasia')->limit(min((int) $request->input('limit'), 200));
         }
 
         $cliente = $query->get()->load('categoria', 'filial', 'contatos');

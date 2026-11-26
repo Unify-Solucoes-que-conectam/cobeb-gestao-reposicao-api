@@ -28,6 +28,11 @@ class NotasFiscaisController extends Controller
             });
         }
 
+        // o número da nota pode repetir entre filiais (revendas)
+        if ($request->filled('filial')) {
+            $query->where('filial_id', $request->input('filial'));
+        }
+
         // consulta notas de um cliente específico se o parâmetro 'cliente_id' for fornecido na requisição
         if ($request->filled('cliente_id')) {
             $clienteId = $request->input('cliente_id');
@@ -56,7 +61,10 @@ class NotasFiscaisController extends Controller
     public function show(Request $request, $numero)
     {
         // consultar dados da nota fiscal
-        $query = NotaFiscal::query()->where('numero', $numero);
+        // o número da nota pode repetir entre filiais: permite filtrar por filial ou cliente
+        $query = NotaFiscal::query()->where('numero', $numero)
+            ->when($request->filled('filial'), fn ($q) => $q->where('filial_id', $request->input('filial')))
+            ->when($request->filled('cliente_id'), fn ($q) => $q->where('cliente_id', $request->input('cliente_id')));
 
         try {
 

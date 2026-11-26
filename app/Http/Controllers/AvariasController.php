@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Tenant;
 use App\Events\GlobalEvent;
 use App\Http\Resources\AvariaResource;
 use App\Http\Resources\ItemAvariaResource;
@@ -50,12 +51,10 @@ class AvariasController extends Controller
                 $query->where('status', $request->input('status'));
             }
 
-            // 3. Filtro de Filial
-            if ($request->filled('filialId')) {
-                $filialId = $request->input('filialId');
-                $query->whereHas('motorista.filial', function ($q) use ($filialId) {
-                    $q->where('id', $filialId);
-                });
+            // 3. Filial: no tenant "Geral" usa o filtro da tela; numa filial, sempre a filial conectada
+            $tenant = Tenant::atual();
+            if (!$tenant->geral || $request->filled('filialId')) {
+                $query->whereHas('motorista', fn ($q) => $tenant->restringir($q, 'motoristas.filial_id', $request->input('filialId')));
             }
 
             $avarias = $query->with([
@@ -325,6 +324,17 @@ class AvariasController extends Controller
         ], [
             'status.in' => 'O status deve ser apenas aprovada, reprovada, aguardando aprovação ou trocada.',
         ]);
+
+        // enviar para aprovação é do motorista; os demais status são decisões do monitoramento
+        $acao = $request->status === 'aguardando_aprovacao' ? 'avarias.registrar' : 'avarias.aprovar';
+        if (!$request->user()->can($acao)) {
+            return response()->json([
+                'success' => false,
+                'message' => $acao === 'avarias.aprovar'
+                    ? 'Seu grupo não tem permissão para aprovar ou reprovar avarias.'
+                    : 'Seu grupo não tem permissão para enviar avarias para aprovação.',
+            ], 403);
+        }
 
         try {
             // 2. Busca a avaria pelo ID

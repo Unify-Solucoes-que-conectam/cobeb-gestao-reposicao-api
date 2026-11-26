@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Cliente;
+use App\Models\Filial;
 use App\Models\Produto;
 use App\Models\NotaFiscal;
 use PhpOffice\PhpSpreadsheet\NamedRange;
@@ -20,6 +21,11 @@ use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 
 class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithStyles, WithColumnWidths
 {
+    /**
+     * @param  Filial|null  $filial  Filial do tenant conectado. Quando informada, o modelo
+     *                               lista apenas os clientes/notas dessa filial e já vem com a filial preenchida.
+     */
+    public function __construct(private ?Filial $filial = null) {}
 
     public function headings(): array
     {
@@ -37,7 +43,8 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
             'Adic. Finan',
             'Desconto',
             'Total',
-            'Nr. Pedido'
+            'Nr. Pedido',
+            'Filial',
         ];
     }
 
@@ -56,7 +63,8 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
                 '0,00',
                 '0,00',
                 '100,00',
-                '123456'
+                '123456',
+                $this->filial?->codigo ?? '',
             ]
         ];
     }
@@ -100,7 +108,16 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
                 $name = static function (string $name, Worksheet $sheet, string $range) use ($spreadsheet): void {
                     $spreadsheet->addNamedRange(new NamedRange($name, $sheet, $range));
                 };
-                $clientes = Cliente::orderBy('codigo')->pluck('codigo');
+                $clientes = Cliente::query()
+                    ->when($this->filial, fn ($q) => $q->where('filial_id', $this->filial->id))
+                    ->orderBy('codigo')->distinct()->pluck('codigo');
+                $filiais = $this->filial
+                    ? collect([$this->filial->codigo])
+                    : Filial::orderBy('codigo')->pluck('codigo');
+                foreach ($filiais as $index => $codigo) {
+                    $write($lists, 'E' . ($index + 1), $codigo);
+                }
+                $name('ListaFiliais', $lists, '$E$1:$E$' . max(1, $filiais->count()));
                 $produtos = Produto::orderBy('codigo')->pluck('codigo');
                 foreach ($clientes as $index => $codigo) {
                     $write($lists, 'A' . ($index + 1), $codigo);
@@ -139,6 +156,7 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
                 $invoices = NotaFiscal::query()
                     ->with(['cliente:id,codigo', 'produtos.produto:id,codigo'])
                     ->whereHas('cliente')
+                    ->when($this->filial, fn ($q) => $q->where('filial_id', $this->filial->id))
                     ->orderBy('cliente_id')->orderBy('numero')->orderBy('id');
                 foreach ($invoices->lazy(500) as $invoice) {
                     if ($clientId !== $invoice->cliente_id) {
@@ -191,6 +209,10 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
                     'INDIRECT(IF(OR($B2&""="1",$B2&""="2"),"ListaProdutos",IFERROR(VLOOKUP($A2&"|"&$E2,MapaProdutos,2,FALSE),"ListaVazia")))',
                     'Troca: selecione cliente e nota para listar seus produtos. Entrada ou bonificação: selecione um produto cadastrado.'
                 ));
+                $mainSheet->setDataValidation('L2:L10000', $validation(
+                    'ListaFiliais',
+                    'Código da filial do cliente. Pode ficar em branco ao importar conectado em uma filial (fora do "Geral").'
+                ));
             },
         ];
     }
@@ -209,6 +231,7 @@ class VendasTrocasExport implements FromArray, WithHeadings, WithEvents, WithSty
             'I' => 15, // Desconto
             'J' => 15, // Total
             'K' => 20, // Nr. Pedido
+            'L' => 12, // Filial
         ];
     }
 }

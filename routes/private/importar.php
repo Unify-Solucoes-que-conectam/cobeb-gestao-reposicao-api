@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('', [ImportController::class, 'list']);
 Route::get('{id}', [ImportController::class, 'show']);
-Route::post('', [ImportController::class, 'start']);
 
-Route::post('validar-trocas', [ImportController::class, 'validateTrocas']);
+Route::middleware('can:importacoes.importar')->group(function () {
+    Route::post('', [ImportController::class, 'start']);
+    Route::post('validar-trocas', [ImportController::class, 'validateTrocas']);
+});
