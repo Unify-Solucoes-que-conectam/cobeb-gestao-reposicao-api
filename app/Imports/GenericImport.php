@@ -20,6 +20,7 @@ use App\Models\TipoMarca;
 use App\Models\Troca;
 use App\Models\Usuario;
 use App\Services\ImportTrocaService;
+use App\Support\UnidadeMedida;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
@@ -494,7 +495,7 @@ class GenericImport
             // Cada linha é um componente independente da nota, inclusive quando
             // possui o mesmo produto de uma linha anterior (combos promocionais).
             $item = new ProdutoNotaFiscal(['nota_fiscal_id' => $nota->id, 'produto_id' => $produtoId]);
-            $item->fill(['quantidade' => (int) $raw, 'operacao' => $operacao, 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
+            $item->fill(['quantidade' => (int) $raw, 'unidade_medida' => $unidadeMedida, 'operacao' => $operacao, 'data_operacao' => $this->toDate($data['dt_operacao'] ?? ''),
                 'valor_desconto' => $this->toDecimal($data['desconto'] ?? ''), 'valor_adicional' => $this->toDecimal($data['adic_fina'] ?? ''),
                 'valor_total' => $this->toDecimal($data['total'] ?? '')])->save();
         }, 3);

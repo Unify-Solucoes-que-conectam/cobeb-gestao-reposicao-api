@@ -19,6 +19,7 @@ class ProdutoNotaFiscal extends Model
     'nota_fiscal_id',
     'produto_id',
     'quantidade',
+    'unidade_medida',
     'valor_desconto',
     'valor_adicional',
     'valor_total',
