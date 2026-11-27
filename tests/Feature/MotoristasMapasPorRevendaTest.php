@@ -163,7 +163,7 @@ class MotoristasMapasPorRevendaTest extends TestCase
 
         $entrada = fn (string $cliente) => [
             'nota_fiscal' => '123', 'nr_pedido' => '1', 'cliente' => $cliente, 'dt_operacao' => now()->format('d/m/Y'),
-            'operacao' => '1', 'emissao' => now()->format('d/m/Y'), 'produto' => 'P1', 'quantidade' => '10',
+            'operacao' => '1', 'emissao' => now()->format('d/m/Y'), 'produto' => 'P1', 'quantidade' => '10', 'unidade_medida' => 'CX',
             'desconto' => '0', 'adic_fina' => '0', 'total' => '10',
         ];
         $this->importar('vendas_trocas', [$entrada('500'), $entrada('600')]);
