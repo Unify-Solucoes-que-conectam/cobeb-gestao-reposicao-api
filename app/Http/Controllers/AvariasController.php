@@ -74,7 +74,11 @@ class AvariasController extends Controller
                 'itens.produtoNotaFiscal.notaFiscal',
                 'itens.tipoAvaria',
                 'itens.trocas.responsavel',
-            ])->where('status', '!=', 'pendente')->get();
+            ])->where('status', '!=', 'pendente')
+                // mais recentes primeiro (data de criação)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->get();
 
             return response()->json([
                 'success' => true,

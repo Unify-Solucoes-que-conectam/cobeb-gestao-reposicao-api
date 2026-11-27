@@ -196,7 +196,7 @@ class ClientesController extends Controller
                 'itens.produtoNotaFiscal.notaFiscal',
                 'itens.produtoNotaFiscal.produto',
                 'itens.tipoAvaria',
-            ])->get();
+            ])->orderByDesc('created_at')->orderByDesc('id')->get();
 
             return response()->json([
                 'success' => true,
