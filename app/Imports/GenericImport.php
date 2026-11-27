@@ -487,6 +487,7 @@ class GenericImport
             $raw = trim((string) ($data['quantidade'] ?? ''));
             if (!$clienteId || !$produtoId || $numero === '') throw new \RuntimeException('Informe cliente, nota e produto válidos.');
             if (!preg_match('/^\d+$/', $raw) || (float) $raw < 1 || (float) $raw > 2147483647) throw new \RuntimeException('Quantidade de entrada deve ser inteira e positiva.');
+            $unidadeMedida = UnidadeMedida::validate($data['unidade_medida'] ?? '');
             // O número da nota é único por filial (revenda): busca na filial do cliente.
             $nota = NotaFiscal::numeroNaFilial($numero, $cliente->filial_id)->lockForUpdate()->first();
             if ($nota && $nota->cliente_id !== $clienteId) throw new \RuntimeException('A nota já pertence a outro cliente.');
